@@ -1,0 +1,7 @@
+﻿image,verified_helmet,verified_vest,review_status,notes
+004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,yes,yes,verified,Corrected: visible bareheaded person at far right; dataset marks NO-Hardhat; multiple people without high-vis vests.
+2008_008320_jpg.rf.a1f52d3537abe3e294e37dd0476e3213.jpg,not_applicable,not_applicable,excluded,"Corrected: man holding bicycles is not visibly a PPE-required worker, despite inappropriate dataset PPE annotations."
+2009_000059_jpg.rf.fdadf92b3365ec373f467210a8e174d5.jpg,not_applicable,not_applicable,excluded,"Confirmed: image shows a baby in a chair, not a workplace PPE assessment."
+ppe_ob.jpg,no,yes,verified,Confirmed under helmet-and-vest rule: two people visibly wearing red helmets but no high-visibility vests.
+ppe_v.jpg,yes,yes,verified,Conditional: adults in construction-site setting without helmets/vests; label assumes PPE required for everyone in the monitored work zone. Verify site scope/roles.
+stock1.jpg,no,no,verified,Confirmed visually: four visible construction workers wearing helmets and high-visibility vests.

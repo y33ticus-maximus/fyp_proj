@@ -1,0 +1,4 @@
+﻿scope,ground_truth_binary,scored_decisive,unclear_or_error_on_binary,tp,tn,fp,fn,accuracy,precision,recall,f1,false_positive_rate,coverage,strict_accuracy,actionable_recall
+overall,5,5,0,3,1,0,1,0.8,1.0,0.75,0.8571428571428571,0.0,1.0,0.8,0.75
+helmet,5,5,0,2,3,0,0,1.0,1.0,1.0,1.0,0.0,1.0,1.0,1.0
+vest,5,5,0,2,1,0,2,0.6,1.0,0.5,0.6666666666666666,0.0,1.0,0.6,0.5

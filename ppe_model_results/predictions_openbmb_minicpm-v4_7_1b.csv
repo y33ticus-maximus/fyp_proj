@@ -1,0 +1,97 @@
+﻿image,model,ground_truth,predicted,truth_helmet,pred_helmet,truth_vest,pred_vest,pred_boots,pred_worker_count,seconds,error,raw_response
+004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,openbmb/minicpm-v4.7:1b,violation,violation,yes,yes,yes,yes,no,5,16.401,,"{
+  ""worker_count"": 5,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""present""
+    },
+    {
+      ""position"": ""middle-left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""present""
+    },
+    {
+      ""position"": ""middle-back"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""present""
+    },
+    {
+      ""position"": ""red vest"",
+      ""helmet"": ""worn"",
+      ""vest"": ""present"",
+      ""boots"": ""present""
+    },
+    {
+      ""position"": ""far right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""present"",
+      ""boots"": ""present""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""no""
+}"
+ppe_ob.jpg,openbmb/minicpm-v4.7:1b,violation,violation,no,no,yes,yes,unclear,2,8.393,,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_v.jpg,openbmb/minicpm-v4.7:1b,violation,violation,yes,yes,yes,yes,unclear,3,7.459,,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""background"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+stock1.jpg,openbmb/minicpm-v4.7:1b,compliant,compliant,no,no,no,no,unclear,4,3.087,,"{
+  ""worker_count"": 4,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center-left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"

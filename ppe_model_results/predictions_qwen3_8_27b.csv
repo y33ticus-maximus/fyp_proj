@@ -1,5 +1,5 @@
 ﻿image,model,ground_truth,predicted,truth_helmet,pred_helmet,truth_vest,pred_vest,pred_boots,pred_worker_count,seconds,error,raw_response
-000005_jpg.rf.c613c066b79795d219855aca269760e6.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,2,9.292,,"{
+000005_jpg.rf.c613c066b79795d219855aca269760e6.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,2,9.151,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -9,7 +9,7 @@
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-006672_jpg.rf.657b0a9ecd720d07ca5dd75338a058d5.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,6,17.118,,"{
+006672_jpg.rf.657b0a9ecd720d07ca5dd75338a058d5.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,6,17.194,,"{
   ""worker_count"": 6,
   ""workers"": [
     {""position"": ""far left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -23,7 +23,7 @@
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-002551_jpg.rf.b09484b130c1587abfa8365c3d774bf1.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,3,18.183,,"{
+002551_jpg.rf.b09484b130c1587abfa8365c3d774bf1.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,3,18.175,,"{
   ""worker_count"": 3,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -34,7 +34,7 @@
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,18,40.296,,"{
+IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,18,40.41,,"{
   ""worker_count"": 18,
   ""workers"": [
     {""position"": ""far left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""brown leather boots (certification not verifiable)""},
@@ -60,7 +60,7 @@ IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-003357_jpg.rf.9fb1f2cebc239b4276a81ce2cbf9e911.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,1,11.439,,"{
+003357_jpg.rf.9fb1f2cebc239b4276a81ce2cbf9e911.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,1,11.32,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -69,7 +69,7 @@ IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,21.603,,"{
+image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,21.381,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -78,7 +78,7 @@ image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,qwen3.8:27b,violation,violation,yes,unclear,yes,yes,unclear,6,22.662,,"{
+004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,qwen3.8:27b,violation,violation,yes,unclear,yes,yes,unclear,6,23.38,,"{
   ""worker_count"": 6,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -92,7 +92,7 @@ image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.911,,"{
+image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.831,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -101,7 +101,7 @@ image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-004763_jpg.rf.c8f1bd1cb7cf6037f7c90a6c213d6364.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,3,9.379,,"{
+004763_jpg.rf.c8f1bd1cb7cf6037f7c90a6c213d6364.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,3,9.34,,"{
   ""worker_count"": 3,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -112,7 +112,7 @@ image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-ppe_1073_jpg.rf.92536fa1d42874966bc7622b6f87290a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,11,52.251,,"{
+ppe_1073_jpg.rf.92536fa1d42874966bc7622b6f87290a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,11,51.989,,"{
   ""worker_count"": 11,
   ""workers"": [
     {""position"": ""far-left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
@@ -131,7 +131,7 @@ ppe_1073_jpg.rf.92536fa1d42874966bc7622b6f87290a.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-114_jpg.rf.eb3011bd70cacf2dc16e547a76bf46af.jpg,qwen3.8:27b,violation,violation,unclear,unclear,yes,yes,unclear,1,18.539,,"{
+youtube-114_jpg.rf.eb3011bd70cacf2dc16e547a76bf46af.jpg,qwen3.8:27b,violation,violation,unclear,unclear,yes,yes,unclear,1,18.603,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""unclear"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -140,7 +140,7 @@ youtube-114_jpg.rf.eb3011bd70cacf2dc16e547a76bf46af.jpg,qwen3.8:27b,violation,vi
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-108_jpg.rf.fab5c53071f6136e964450b66c7af12a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,10.725,,"{
+youtube-108_jpg.rf.fab5c53071f6136e964450b66c7af12a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,10.834,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -150,7 +150,7 @@ youtube-108_jpg.rf.fab5c53071f6136e964450b66c7af12a.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-263_jpg.rf.f567aa6c1de28e9eb92812ea9acc62af.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,1,11.163,,"{
+youtube-263_jpg.rf.f567aa6c1de28e9eb92812ea9acc62af.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,1,11.46,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -159,7 +159,7 @@ youtube-263_jpg.rf.f567aa6c1de28e9eb92812ea9acc62af.jpg,qwen3.8:27b,violation,vi
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-462_jpg.rf.8d7dde79174010662d8cb3dca5719661.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,18.225,,"{
+youtube-462_jpg.rf.8d7dde79174010662d8cb3dca5719661.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,18.393,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -169,7 +169,7 @@ youtube-462_jpg.rf.8d7dde79174010662d8cb3dca5719661.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-ppe_0018_jpg.rf.7b9c376ffd49f5537eb4a7fed3e4d3b1.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,2,10.084,,"{
+ppe_0018_jpg.rf.7b9c376ffd49f5537eb4a7fed3e4d3b1.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,2,10.295,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -179,7 +179,7 @@ ppe_0018_jpg.rf.7b9c376ffd49f5537eb4a7fed3e4d3b1.jpg,qwen3.8:27b,violation,viola
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-631_jpg.rf.039b87797727e45047956dd063733e38.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.781,,"{
+youtube-631_jpg.rf.039b87797727e45047956dd063733e38.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.712,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -188,7 +188,7 @@ youtube-631_jpg.rf.039b87797727e45047956dd063733e38.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-Image36_jpg.rf.137e9f15ce037d4f965dd8b538091cd5.jpg,qwen3.8:27b,violation,violation,no,unclear,yes,yes,unclear,4,29.678,,"{
+Image36_jpg.rf.137e9f15ce037d4f965dd8b538091cd5.jpg,qwen3.8:27b,violation,violation,no,unclear,yes,yes,unclear,4,29.541,,"{
   ""worker_count"": 4,
   ""workers"": [
     {""position"": ""top-left"", ""helmet"": ""unclear"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -200,7 +200,7 @@ Image36_jpg.rf.137e9f15ce037d4f965dd8b538091cd5.jpg,qwen3.8:27b,violation,violat
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,9.498,,"{
+youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,9.369,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -209,7 +209,7 @@ youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-006463_jpg.rf.f134bfc3f96f0e501a027414ffffcc82.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,9,23.482,,"{
+006463_jpg.rf.f134bfc3f96f0e501a027414ffffcc82.jpg,qwen3.8:27b,violation,violation,no,no,yes,yes,unclear,9,23.209,,"{
   ""worker_count"": 9,
   ""workers"": [
     {""position"": ""far-left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -226,7 +226,7 @@ youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.181,,"{
+youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.168,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -235,7 +235,7 @@ youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-2008_008519_jpg.rf.25dde55db22f63ad185c58fef6f41669.jpg,qwen3.8:27b,violation,violation,no,yes,yes,yes,unclear,3,24.261,,"{
+2008_008519_jpg.rf.25dde55db22f63ad185c58fef6f41669.jpg,qwen3.8:27b,violation,violation,no,yes,yes,yes,unclear,3,24.171,,"{
   ""worker_count"": 3,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""missing"", ""vest"": ""worn"", ""boots"": ""worn""},
@@ -246,7 +246,7 @@ youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-ppe_0064_jpg.rf.f79f47e7b85011b7692cf52369b99b6c.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.889,,"{
+ppe_0064_jpg.rf.f79f47e7b85011b7692cf52369b99b6c.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.968,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -255,7 +255,7 @@ ppe_0064_jpg.rf.f79f47e7b85011b7692cf52369b99b6c.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-186_jpg.rf.a7c82770148c2886fb42a72693784687.jpg,qwen3.8:27b,violation,unclear,yes,unclear,no,no,unclear,2,45.792,,"{
+youtube-186_jpg.rf.a7c82770148c2886fb42a72693784687.jpg,qwen3.8:27b,violation,unclear,yes,unclear,no,no,unclear,2,45.969,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""right-foreground"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -265,7 +265,7 @@ youtube-186_jpg.rf.a7c82770148c2886fb42a72693784687.jpg,qwen3.8:27b,violation,un
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.117,,"{
+ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.439,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -274,7 +274,7 @@ ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-2008_008320_jpg.rf.a1f52d3537abe3e294e37dd0476e3213.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,2,20.153,,"{
+2008_008320_jpg.rf.a1f52d3537abe3e294e37dd0476e3213.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,2,20.334,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
@@ -284,7 +284,7 @@ ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,qwen3.8:27b,compliant,compl
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-179_jpg.rf.daae2adf8a9bb7586f8a3662850efa87.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.011,,"{
+youtube-179_jpg.rf.daae2adf8a9bb7586f8a3662850efa87.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.202,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -293,7 +293,7 @@ youtube-179_jpg.rf.daae2adf8a9bb7586f8a3662850efa87.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-263_jpg.rf.cf6bd3891e28a9e88ca1f4e91f4379a0.jpg,qwen3.8:27b,violation,compliant,yes,no,no,no,unclear,1,16.881,,"{
+youtube-263_jpg.rf.cf6bd3891e28a9e88ca1f4e91f4379a0.jpg,qwen3.8:27b,violation,compliant,yes,no,no,no,unclear,1,16.734,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -302,7 +302,7 @@ youtube-263_jpg.rf.cf6bd3891e28a9e88ca1f4e91f4379a0.jpg,qwen3.8:27b,violation,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-200_jpg.rf.2e18ca9e847a8153b4fb619a6dfb83de.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.514,,"{
+youtube-200_jpg.rf.2e18ca9e847a8153b4fb619a6dfb83de.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.426,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -311,7 +311,7 @@ youtube-200_jpg.rf.2e18ca9e847a8153b4fb619a6dfb83de.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-RPReplay_Final1667001201_MP4-100_jpg.rf.fdb27274140f19750e4dc2b4afb5b639.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,15.482,,"{
+RPReplay_Final1667001201_MP4-100_jpg.rf.fdb27274140f19750e4dc2b4afb5b639.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,15.46,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -320,7 +320,7 @@ RPReplay_Final1667001201_MP4-100_jpg.rf.fdb27274140f19750e4dc2b4afb5b639.jpg,qwe
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-287_jpg.rf.586807564387d84ca3261cb587f0aa6e.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.73,,"{
+youtube-287_jpg.rf.586807564387d84ca3261cb587f0aa6e.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.467,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -329,7 +329,7 @@ youtube-287_jpg.rf.586807564387d84ca3261cb587f0aa6e.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_3100_mp4-12_jpg.rf.f5426fa2b87a0cdfb03f2a6aff0f44f4.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.16,,"{
+IMG_3100_mp4-12_jpg.rf.f5426fa2b87a0cdfb03f2a6aff0f44f4.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.942,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -338,7 +338,7 @@ IMG_3100_mp4-12_jpg.rf.f5426fa2b87a0cdfb03f2a6aff0f44f4.jpg,qwen3.8:27b,violatio
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-391_jpg.rf.941d2a1277953dea6f593a6f4a790a1f.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.639,,"{
+youtube-391_jpg.rf.941d2a1277953dea6f593a6f4a790a1f.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.555,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -347,7 +347,7 @@ youtube-391_jpg.rf.941d2a1277953dea6f593a6f4a790a1f.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_3100_mp4-9_jpg.rf.d54541c51751c2cb0338583189e24839.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,15.918,,"{
+IMG_3100_mp4-9_jpg.rf.d54541c51751c2cb0338583189e24839.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,15.911,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -356,7 +356,7 @@ IMG_3100_mp4-9_jpg.rf.d54541c51751c2cb0338583189e24839.jpg,qwen3.8:27b,violation
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-455_jpg.rf.b4a2bbd54738aa12b746d9934005477b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,10.876,,"{
+youtube-455_jpg.rf.b4a2bbd54738aa12b746d9934005477b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,10.961,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -366,7 +366,7 @@ youtube-455_jpg.rf.b4a2bbd54738aa12b746d9934005477b.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_0871_MOV-12_jpg.rf.5bf840ad63e4e8a855d568b0466886d9.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,14.731,,"{
+IMG_0871_MOV-12_jpg.rf.5bf840ad63e4e8a855d568b0466886d9.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,14.936,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -375,7 +375,7 @@ IMG_0871_MOV-12_jpg.rf.5bf840ad63e4e8a855d568b0466886d9.jpg,qwen3.8:27b,violatio
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-504_jpg.rf.f9a147e51e9c8da3cf7a2f6192350774.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.292,,"{
+youtube-504_jpg.rf.f9a147e51e9c8da3cf7a2f6192350774.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.465,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -384,7 +384,7 @@ youtube-504_jpg.rf.f9a147e51e9c8da3cf7a2f6192350774.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_0871_mp4-11_jpg.rf.077108e2788da772f239603052c49ee1.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.768,,"{
+IMG_0871_mp4-11_jpg.rf.077108e2788da772f239603052c49ee1.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.894,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -393,7 +393,7 @@ IMG_0871_mp4-11_jpg.rf.077108e2788da772f239603052c49ee1.jpg,qwen3.8:27b,violatio
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-584_jpg.rf.f95e03ef7339db11bb74bcfd352d2a38.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.074,,"{
+youtube-584_jpg.rf.f95e03ef7339db11bb74bcfd352d2a38.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.987,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -402,7 +402,7 @@ youtube-584_jpg.rf.f95e03ef7339db11bb74bcfd352d2a38.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_0871_mp4-23_jpg.rf.29e223be9ce24464a75d15cf808ed496.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.515,,"{
+IMG_0871_mp4-23_jpg.rf.29e223be9ce24464a75d15cf808ed496.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.465,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -411,7 +411,7 @@ IMG_0871_mp4-23_jpg.rf.29e223be9ce24464a75d15cf808ed496.jpg,qwen3.8:27b,violatio
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-617_jpg.rf.0f5ea7ba0ae177b6428e831987a50f8b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,11.733,,"{
+youtube-617_jpg.rf.0f5ea7ba0ae177b6428e831987a50f8b.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,2,11.717,,"{
   ""worker_count"": 2,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
@@ -421,7 +421,7 @@ youtube-617_jpg.rf.0f5ea7ba0ae177b6428e831987a50f8b.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-IMG_3103_mp4-9_jpg.rf.2214fc01d9fda8c5aee91f19700d8a15.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.044,,"{
+IMG_3103_mp4-9_jpg.rf.2214fc01d9fda8c5aee91f19700d8a15.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.757,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -430,7 +430,7 @@ IMG_3103_mp4-9_jpg.rf.2214fc01d9fda8c5aee91f19700d8a15.jpg,qwen3.8:27b,violation
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-697_jpg.rf.6f131cdcfc4849be0f93b59e4c0678c1.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,14.026,,"{
+youtube-697_jpg.rf.6f131cdcfc4849be0f93b59e4c0678c1.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.849,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -439,7 +439,7 @@ youtube-697_jpg.rf.6f131cdcfc4849be0f93b59e4c0678c1.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-maksssksksss17_png_jpg.rf.92a0c41078e0ebbbc5210f350413156a.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.384,,"{
+maksssksksss17_png_jpg.rf.92a0c41078e0ebbbc5210f350413156a.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.32,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -448,7 +448,7 @@ maksssksksss17_png_jpg.rf.92a0c41078e0ebbbc5210f350413156a.jpg,qwen3.8:27b,viola
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-836_jpg.rf.c95929820a1458bb5693dfdff28d47ca.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.683,,"{
+youtube-836_jpg.rf.c95929820a1458bb5693dfdff28d47ca.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.633,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -457,7 +457,7 @@ youtube-836_jpg.rf.c95929820a1458bb5693dfdff28d47ca.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-Movie-on-10-31-22-at-10_08-AM_mov-24_jpg.rf.95ec6998880e7bb081f76b11a5e978e9.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,15.963,,"{
+Movie-on-10-31-22-at-10_08-AM_mov-24_jpg.rf.95ec6998880e7bb081f76b11a5e978e9.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.065,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -466,7 +466,7 @@ Movie-on-10-31-22-at-10_08-AM_mov-24_jpg.rf.95ec6998880e7bb081f76b11a5e978e9.jpg
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-youtube-131_jpg.rf.5163b246b1fc080d43946cacf8ccfac1.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.142,,"{
+youtube-131_jpg.rf.5163b246b1fc080d43946cacf8ccfac1.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,10.371,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -475,7 +475,7 @@ youtube-131_jpg.rf.5163b246b1fc080d43946cacf8ccfac1.jpg,qwen3.8:27b,compliant,co
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.661,,"{
+Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,16.797,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -484,7 +484,7 @@ Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
-006118_jpg.rf.07a45c83f80fef659eb79d408e6fb3ec.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,13.956,,"{
+006118_jpg.rf.07a45c83f80fef659eb79d408e6fb3ec.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,14.132,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
@@ -493,7 +493,7 @@ Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg
   ""vest_violation"": ""no"",
   ""boots_violation"": ""unclear""
 }"
-youtube-192_jpg.rf.f2fc6cb4eb904216075118db4b2da10a.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.741,,"{
+youtube-192_jpg.rf.f2fc6cb4eb904216075118db4b2da10a.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,1,17.774,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
@@ -502,10 +502,118 @@ youtube-192_jpg.rf.f2fc6cb4eb904216075118db4b2da10a.jpg,qwen3.8:27b,violation,vi
   ""vest_violation"": ""yes"",
   ""boots_violation"": ""unclear""
 }"
--2544-_png_jpg.rf.bbd424c2b9470ff20ff625ce05001689.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.342,,"{
+-2544-_png_jpg.rf.bbd424c2b9470ff20ff625ce05001689.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.276,,"{
   ""worker_count"": 1,
   ""workers"": [
     {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+2009_000059_jpg.rf.fdadf92b3365ec373f467210a8e174d5.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,no,0,9.868,,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""no""
+}"
+ppe_0029_jpg.rf.cdfd7d2e151bd71e736a4fbe555fa4e2.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,9.713,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+class2_145_jpg.rf.0b9591cc733f21d8544822f33b755a4b.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,2,14.256,,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0985_jpg.rf.6bb3fa31d2726b7992bd6f8e0af9e935.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,3,21.97,,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""middle"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+class1_150_jpg.rf.a3502c0a13f5c127ed58b8a0beb8db7e.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,2,24.747,,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0738_jpg.rf.631d61e347713b921f68ac21ad3d2f33.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,12.101,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+thumbnail-ba5c72edb320b49a69e86b05775c49b2-scaled-1_jpeg_jpg.rf.edefd0830c6b64605136df7a135fdc4f.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,7,29.716,,"{
+  ""worker_count"": 7,
+  ""workers"": [
+    {""position"": ""far-left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""center-left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""center-right"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""far-right"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+front_crawling_00088_jpg.rf.d93d63421ccfffe877dea9dfb0858884.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,1,11.353,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+NX_img_177_jpg.rf.96ecd1df106d0d0386ff1f8f03877833.jpg,qwen3.8:27b,violation,violation,yes,yes,yes,yes,unclear,4,23.296,,"{
+  ""worker_count"": 4,
+  ""workers"": [
+    {""position"": ""top-left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""foreground-left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""unclear"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""background-right"", ""helmet"": ""unclear"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+image_829_jpg.rf.13158540efc2077461fc0135e9bbdf2c.jpg,qwen3.8:27b,compliant,compliant,no,no,no,no,unclear,8,28.246,,"{
+  ""worker_count"": 8,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center-left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center-right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""far-right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
   ],
   ""helmet_violation"": ""no"",
   ""vest_violation"": ""no"",

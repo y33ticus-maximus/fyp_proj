@@ -1,0 +1,61 @@
+﻿review_id,image,source_split,annotation_helmet,annotation_vest,helmet_missing_boxes,vest_missing_boxes,helmet_worn_boxes,vest_worn_boxes,person_boxes,preliminary_label,verified_helmet,verified_vest,review_status,notes
+R01,000005_jpg.rf.c613c066b79795d219855aca269760e6.jpg,test,no,yes,0,2,2,0,2,potential_violation,no,yes,verified,
+R02,006672_jpg.rf.657b0a9ecd720d07ca5dd75338a058d5.jpg,test,no,no,0,0,6,6,6,potential_compliant,no,no,verified,
+R03,002551_jpg.rf.b09484b130c1587abfa8365c3d774bf1.jpg,test,no,yes,0,3,3,0,3,potential_violation,no,yes,verified,
+R04,IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,test,no,no,0,0,22,20,21,potential_compliant,no,no,verified,
+R05,003357_jpg.rf.9fb1f2cebc239b4276a81ce2cbf9e911.jpg,test,no,yes,0,1,1,0,1,potential_violation,no,yes,verified,
+R06,image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,test,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R07,004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,test,yes,yes,1,5,5,1,6,potential_violation,yes,yes,verified,far right person may not be worker
+R08,image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,test,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R09,004763_jpg.rf.c8f1bd1cb7cf6037f7c90a6c213d6364.jpg,test,no,yes,0,3,3,0,3,potential_violation,no,yes,verified,
+R10,ppe_1073_jpg.rf.92536fa1d42874966bc7622b6f87290a.jpg,test,no,no,0,0,11,9,11,potential_compliant,no,no,verified,
+R11,youtube-114_jpg.rf.eb3011bd70cacf2dc16e547a76bf46af.jpg,test,no,yes,0,1,0,0,1,potential_violation,unclear,yes,verified,"head not shown fully shown, unclear"
+R12,youtube-108_jpg.rf.fab5c53071f6136e964450b66c7af12a.jpg,test,no,no,0,0,2,2,2,potential_compliant,no,no,verified,
+R13,youtube-263_jpg.rf.f567aa6c1de28e9eb92812ea9acc62af.jpg,test,no,yes,0,1,1,0,1,potential_violation,no,yes,verified,
+R14,youtube-462_jpg.rf.8d7dde79174010662d8cb3dca5719661.jpg,test,no,no,0,0,2,2,2,potential_compliant,no,no,verified,
+R15,ppe_0018_jpg.rf.7b9c376ffd49f5537eb4a7fed3e4d3b1.jpg,test,no,yes,0,2,2,0,2,potential_violation,no,yes,verified,
+R16,youtube-631_jpg.rf.039b87797727e45047956dd063733e38.jpg,test,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R17,Image36_jpg.rf.137e9f15ce037d4f965dd8b538091cd5.jpg,test,no,yes,0,9,15,1,19,potential_violation,no,yes,verified,
+R18,youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,test,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R19,006463_jpg.rf.f134bfc3f96f0e501a027414ffffcc82.jpg,test,no,yes,0,11,9,0,11,potential_violation,no,yes,verified,
+R20,youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,test,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R21,2008_008519_jpg.rf.25dde55db22f63ad185c58fef6f41669.jpg,test,no,yes,0,2,5,2,4,potential_violation,no,yes,verified,
+R22,ppe_0064_jpg.rf.f79f47e7b85011b7692cf52369b99b6c.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R23,youtube-186_jpg.rf.a7c82770148c2886fb42a72693784687.jpg,test,yes,no,1,0,1,2,2,potential_violation,yes,no,verified,
+R24,ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R25,2008_008320_jpg.rf.a1f52d3537abe3e294e37dd0476e3213.jpg,test,yes,no,1,0,0,1,2,potential_violation,yes,yes,verified,could not be a worker
+R26,youtube-179_jpg.rf.daae2adf8a9bb7586f8a3662850efa87.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R27,youtube-263_jpg.rf.cf6bd3891e28a9e88ca1f4e91f4379a0.jpg,test,yes,no,1,0,0,1,1,potential_violation,yes,no,verified,
+R28,youtube-200_jpg.rf.2e18ca9e847a8153b4fb619a6dfb83de.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R29,RPReplay_Final1667001201_MP4-100_jpg.rf.fdb27274140f19750e4dc2b4afb5b639.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"could not be a worker, environment doesnt seem like contsruction area"
+R30,youtube-287_jpg.rf.586807564387d84ca3261cb587f0aa6e.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R31,IMG_3100_mp4-12_jpg.rf.f5426fa2b87a0cdfb03f2a6aff0f44f4.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R32,youtube-391_jpg.rf.941d2a1277953dea6f593a6f4a790a1f.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R33,IMG_3100_mp4-9_jpg.rf.d54541c51751c2cb0338583189e24839.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R34,youtube-455_jpg.rf.b4a2bbd54738aa12b746d9934005477b.jpg,valid,no,no,0,0,2,2,2,potential_compliant,no,no,verified,
+R35,IMG_0871_MOV-12_jpg.rf.5bf840ad63e4e8a855d568b0466886d9.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R36,youtube-504_jpg.rf.f9a147e51e9c8da3cf7a2f6192350774.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R37,IMG_0871_mp4-11_jpg.rf.077108e2788da772f239603052c49ee1.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R38,youtube-584_jpg.rf.f95e03ef7339db11bb74bcfd352d2a38.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R39,IMG_0871_mp4-23_jpg.rf.29e223be9ce24464a75d15cf808ed496.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R40,youtube-617_jpg.rf.0f5ea7ba0ae177b6428e831987a50f8b.jpg,valid,no,no,0,0,2,2,2,potential_compliant,no,no,verified,
+R41,IMG_3103_mp4-9_jpg.rf.2214fc01d9fda8c5aee91f19700d8a15.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R42,youtube-697_jpg.rf.6f131cdcfc4849be0f93b59e4c0678c1.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R43,maksssksksss17_png_jpg.rf.92a0c41078e0ebbbc5210f350413156a.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R44,youtube-836_jpg.rf.c95929820a1458bb5693dfdff28d47ca.jpg,valid,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R45,Movie-on-10-31-22-at-10_08-AM_mov-24_jpg.rf.95ec6998880e7bb081f76b11a5e978e9.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R46,youtube-131_jpg.rf.5163b246b1fc080d43946cacf8ccfac1.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R47,Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R48,006118_jpg.rf.07a45c83f80fef659eb79d408e6fb3ec.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R49,youtube-192_jpg.rf.f2fc6cb4eb904216075118db4b2da10a.jpg,test,yes,yes,1,1,0,0,1,potential_violation,yes,yes,verified,"not construction area most likely, ppe may be unnecessary"
+R50,-2544-_png_jpg.rf.bbd424c2b9470ff20ff625ce05001689.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R51,2009_000059_jpg.rf.fdadf92b3365ec373f467210a8e174d5.jpg,test,yes,yes,1,1,0,0,1,potential_violation,no,no,verified,"it's a baby, babies are not workers"
+R52,ppe_0029_jpg.rf.cdfd7d2e151bd71e736a4fbe555fa4e2.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R53,class2_145_jpg.rf.0b9591cc733f21d8544822f33b755a4b.jpg,test,yes,yes,2,2,0,0,2,potential_violation,yes,yes,verified,
+R54,ppe_0985_jpg.rf.6bb3fa31d2726b7992bd6f8e0af9e935.jpg,train,no,no,0,0,3,3,3,potential_compliant,no,no,verified,
+R55,class1_150_jpg.rf.a3502c0a13f5c127ed58b8a0beb8db7e.jpg,test,yes,yes,1,2,1,0,2,potential_violation,yes,yes,verified,
+R56,ppe_0738_jpg.rf.631d61e347713b921f68ac21ad3d2f33.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R57,thumbnail-ba5c72edb320b49a69e86b05775c49b2-scaled-1_jpeg_jpg.rf.edefd0830c6b64605136df7a135fdc4f.jpg,test,yes,yes,5,8,0,0,10,potential_violation,yes,yes,verified,"looks like airport, ppe may be unnecessary"
+R58,front_crawling_00088_jpg.rf.d93d63421ccfffe877dea9dfb0858884.jpg,train,no,no,0,0,1,1,1,potential_compliant,no,no,verified,
+R59,NX_img_177_jpg.rf.96ecd1df106d0d0386ff1f8f03877833.jpg,test,yes,yes,3,5,2,0,5,potential_violation,yes,yes,verified,
+R60,image_829_jpg.rf.13158540efc2077461fc0135e9bbdf2c.jpg,train,no,no,0,0,8,8,8,potential_compliant,no,no,verified,

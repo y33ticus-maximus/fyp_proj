@@ -28,7 +28,7 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .block-container {padding-top: 2rem; max-width: 1580px;}
+    .block-container {padding-top: 5rem; max-width: 1580px;}
     div[data-testid="stMetric"] {background:#fff;border:1px solid #e4e9f2;
        border-radius: 12px;padding: 12px 15px;min-height:110px;}
     div[data-testid="stMetricLabel"] {color:#64748b;}

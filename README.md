@@ -130,4 +130,4 @@ The tests verify that all 60 V1 predictions have matching image files, that all 
 
 ## Limitations
 
-The app is **read-only** and intended for demonstration/review, not actual hazard alerting. The new V2 benchmark does not yet have prediction CSVs. It is not connected to your supervisor's Ollama service, and it does not automatically update when notebook evaluations run on another computer; copy/sync the CSVs into the relevant benchmark folder and redeploy or refresh as needed.
+The app is **read-only** and intended for demonstration/review, not actual hazard alerting. It is not connected to your supervisor's Ollama service, and it does not automatically update when notebook evaluations run on another computer; copy/sync the CSVs into the relevant benchmark folder and redeploy or refresh as needed.

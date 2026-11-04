@@ -166,6 +166,14 @@ def show_image_detail(record, dataset_dir, items, model):
             st.info("Reviewer note: " + notes)
 
 
+@st.dialog("PPE Image Inspection", width="large")
+def inspect_image_dialog(record, dataset_dir, items, model):
+    show_image_detail(record, dataset_dir, items, model)
+
+    if st.button("Close inspection", key="close_inspection"):
+        st.rerun()
+
+
 def truth_summary(labels, items):
     st.subheader("Verified dataset · Ground-truth distribution")
     rows = []
@@ -197,9 +205,6 @@ def explorer(records, dataset_dir, labels, items, model, scope, *, gallery_only=
     if not filtered:
         st.info("No images match these filters. Try clearing the result filter.")
         return
-    gallery_key=f"gallery_{model}_{scope}_{gallery_only}"
-    if gallery_key not in st.session_state or st.session_state[gallery_key] not in {r["image"] for r in filtered}:
-        st.session_state[gallery_key] = filtered[0]["image"]
 
     focus = next(r for r in filtered if r["image"] == st.session_state[gallery_key])
     show_image_detail(focus, dataset_dir, items, model)
@@ -219,9 +224,13 @@ def explorer(records, dataset_dir, labels, items, model, scope, *, gallery_only=
                     st.markdown(chip(row["outcome"]),unsafe_allow_html=True)
                     st.markdown(f"**Actual:** `{row['truth']}`  ·  **Predicted:** `{row['prediction']}`")
                     st.caption(row["image"][:61])
-                    if st.button("Inspect image", key=f"inspect_{model}_{scope}_{gallery_only}_{row['image']}", use_container_width=True):
-                        st.session_state[gallery_key]=row["image"]
-                        st.rerun()
+                    if st.button(
+                        "Inspect image",
+                        key=f"inspect_{model}_{scope}_{gallery_only}_{row['image']}",
+                        use_container_width=True
+                    ):
+                        inspect_image_dialog(row, dataset_dir, items, model)
+
 
 
 def overview(dataset_dir, labels, runs, items, scope, preferred):

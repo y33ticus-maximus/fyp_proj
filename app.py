@@ -206,9 +206,6 @@ def explorer(records, dataset_dir, labels, items, model, scope, *, gallery_only=
         st.info("No images match these filters. Try clearing the result filter.")
         return
 
-    focus = next(r for r in filtered if r["image"] == st.session_state[gallery_key])
-    show_image_detail(focus, dataset_dir, items, model)
-
     st.divider()
     st.markdown("**Browse image gallery** · click Inspect to open the full evidence")
     page_size = 9

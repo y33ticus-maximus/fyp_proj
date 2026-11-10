@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+# Never commit model evidence or monitoring records.
+data/evidence/*
+!data/evidence/.gitkeep
+data/*.sqlite3*
+data/*.db*

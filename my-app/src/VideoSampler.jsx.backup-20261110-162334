@@ -1,0 +1,158 @@
+import { useRef, useState } from 'react';
+
+/**
+ * Extracts frames from a locally selected video. The whole video stays in the
+ * browser: only individual sampled JPEG frames are sent to FastAPI by the parent.
+ */
+export default function VideoSampler({
+  onAnalyzeFrame,
+  onVideoSelected,
+  onFrameExtracted,
+  onStart,
+  onFinish,
+  disabled = false,
+}) {
+  const [file, setFile] = useState(null);
+  const [intervalSeconds, setIntervalSeconds] = useState(60);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [error, setError] = useState('');
+  const stopRequested = useRef(false);
+  const runningLock = useRef(false);
+
+  async function startAnalysis() {
+    if (!file || disabled || runningLock.current) return;
+    runningLock.current = true;
+    setRunning(true);
+    setError('');
+    setProgress('Loading video…');
+    stopRequested.current = false;
+    const sessionId = crypto.randomUUID();
+
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    let started = false;
+
+    try {
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = resolve;
+        video.onerror = () => reject(new Error('This browser could not decode the video. Try an MP4 (H.264).'));
+        video.src = url;
+        video.load();
+      });
+      const duration = video.duration;
+      if (!Number.isFinite(duration) || duration <= 0) {
+        throw new Error('Video duration could not be determined.');
+      }
+      if (!video.videoWidth || !video.videoHeight) {
+        throw new Error('No usable video frames were found.');
+      }
+
+      const timestamps = [];
+      for (let t = 0; t < duration; t += intervalSeconds) timestamps.push(t);
+
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+      canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+      canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('This browser does not support video frame capture.');
+
+      onStart?.();
+      started = true;
+      let success = 0;
+      let errors = 0;
+
+      for (let i = 0; i < timestamps.length; i++) {
+        if (stopRequested.current) break;
+        const seconds = timestamps[i];
+
+        if (seconds > 0) {
+          await new Promise((resolve, reject) => {
+            video.onseeked = resolve;
+            video.onerror = () => reject(new Error(`Cannot seek to ${seconds}s in this video.`));
+            video.currentTime = Math.min(seconds, Math.max(0, duration - 0.05));
+          });
+        }
+
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const blob = await new Promise((resolve, reject) => {
+          canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Frame capture failed.')),
+            'image/jpeg', 0.85);
+        });
+        const frameFile = new File([blob], `video_frame_${seconds}s.jpg`, { type: 'image/jpeg' });
+        const metadata = { timestampSeconds: seconds, videoName: file.name, sessionId };
+        onFrameExtracted?.(frameFile, metadata);
+
+        setProgress(`Analysing frame ${i + 1}/${timestamps.length} · ${seconds}s of footage`);
+        try {
+          // Awaiting each request ensures only one Ollama request at a time.
+          await onAnalyzeFrame(frameFile, metadata);
+          success += 1;
+        } catch (err) {
+          errors += 1;
+          // Individual frame errors are recorded in the parent panel. Continue.
+          setError(`A frame could not be analysed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+      setProgress(stopRequested.current
+        ? `Stopped · ${success} analysed, ${errors} errors.`
+        : `Completed · ${success} analysed, ${errors} errors.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Video processing failed.');
+      setProgress('Video analysis stopped.');
+    } finally {
+      if (started) onFinish?.();
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(url);
+      setRunning(false);
+      runningLock.current = false;
+    }
+  }
+
+  return (
+    <div className="ppe-video-controls">
+      <div>
+        <h3>Video PPE Analysis</h3>
+        <p className="muted">Upload a video, sample JPEG frames, and analyse them with the currently selected Ollama model. The video is not uploaded in full.</p>
+      </div>
+      <label className="ppe-video-input">
+        <span>Video file</span>
+        <input type="file" accept="video/mp4,video/webm,video/ogg" disabled={running || disabled}
+          onChange={(event) => {
+            const next = event.target.files?.[0] || null;
+            setFile(next);
+            setProgress('');
+            setError('');
+            onVideoSelected?.(next);
+          }} />
+      </label>
+      <label className="ppe-video-interval">
+        <span>Sample interval</span>
+        <select value={intervalSeconds} disabled={running || disabled}
+          onChange={(event) => setIntervalSeconds(Number(event.target.value))}>
+          <option value={5}>Every 5 seconds (short tests)</option>
+          <option value={10}>Every 10 seconds</option>
+          <option value={30}>Every 30 seconds</option>
+          <option value={60}>Every 60 seconds (normal)</option>
+        </select>
+      </label>
+      <div className="ppe-video-buttons">
+        <button type="button" disabled={!file || running || disabled} onClick={startAnalysis}>
+          {running ? 'Analysing video…' : 'Analyse video'}
+        </button>
+        {running && <button type="button" className="outline-button"
+          onClick={() => { stopRequested.current = true; }}>
+          Stop after this frame
+        </button>}
+      </div>
+      {progress && <p className="ppe-video-progress" role="status">{progress}</p>}
+      {error && <p className="analysis-error" role="alert">{error}</p>}
+    </div>
+  );
+}

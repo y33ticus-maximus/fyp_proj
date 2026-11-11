@@ -489,3 +489,88 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .dark-theme .metrics-explanation { color: #b4c8df; }
 .dark-theme .saved-frame-history { border-color: #36516e; }
 .dark-theme .grouped-count { color: #86efac; }
+
+
+/* Incident review: selected frame */
+
+.incident-review-preview,
+.incident-review-history {
+  min-width: 0;
+}
+
+.incident-review-preview h3,
+.incident-review-history h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.incident-review-image {
+  display: block;
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  background: #101b2c;
+  border-radius: 9px;
+}
+
+.incident-no-evidence {
+  padding: 36px 15px;
+  text-align: center;
+  background: #f1f5f9;
+  border-radius: 9px;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.incident-review-ppe {
+  margin-top: 15px;
+}
+
+.incident-review-ppe > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+}
+
+.incident-frame-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 16px;
+  font-size: 12px;
+}
+
+.incident-frame-history table {
+  min-width: 0;
+  font-size: 12px;
+}
+
+.incident-frame-history th,
+.incident-frame-history td {
+  padding: 10px 8px;
+}
+
+.incident-selected-frame {
+  background: #dcfce7;
+}
+
+.incident-review-history .text-button {
+  white-space: nowrap;
+}
+
+.dark-theme .incident-selected-frame {
+  background: #234365;
+}
+
+.dark-theme .incident-no-evidence {
+  background: #14243a;
+  color: #b4c8df;
+}
+
+.dark-theme .incident-review-ppe > div {
+  border-color: #36516e;
+}

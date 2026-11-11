@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import "./App.css";
 import AnalysisUpload from "./AnalysisUpload";
@@ -38,6 +38,8 @@ function App() {
   const [storageError, setStorageError] = useState("");
   const [detailFrames, setDetailFrames] = useState([]);
   const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState("");
+  const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
+  const frameHistoryRef = useRef(null);
   const { items, notifications } = data;
   const stats = data.statistics || blankStats;
   const trend = data.trend || [];
@@ -90,6 +92,7 @@ function App() {
     let cancelled = false;
     setDetailFrames([]);
     setSelectedEvidenceUrl('');
+    setSelectedFrameIndex(0);
     apiJson(`/api/incidents/${selectedId}/analyses`)
       .then(result => { if (!cancelled) setDetailFrames(result.analyses || []); })
       .catch(() => { if (!cancelled) setDetailFrames([]); });
@@ -99,6 +102,64 @@ function App() {
   const unread = notifications.filter((n) => !n.read).length;
   const visibleItems = items.filter((item) => filter === 'All' || item.status === filter);
   const selected = items.find((item) => item.id === selectedId);
+
+const videoDetailFrames = detailFrames
+  .filter((frame) => frame.video_seconds != null)
+  .slice()
+  .sort((a, b) => Number(a.video_seconds) - Number(b.video_seconds));
+
+const selectedDetailFrame = videoDetailFrames[selectedFrameIndex] || null;
+
+useEffect(() => {
+  if (selectedId == null) return;
+
+  function handleDetailKeys(event) {
+    if (event.key === "Escape") {
+      setSelectedId(null);
+      return;
+    }
+
+    const tag = event.target?.tagName;
+    if (
+      ["INPUT", "TEXTAREA", "SELECT"].includes(tag) ||
+      event.target?.isContentEditable ||
+      !videoDetailFrames.length
+    ) return;
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+
+      setSelectedFrameIndex((current) =>
+        Math.max(0, Math.min(videoDetailFrames.length - 1, current + direction))
+      );
+    }
+  }
+
+  window.addEventListener("keydown", handleDetailKeys);
+  return () => window.removeEventListener("keydown", handleDetailKeys);
+}, [selectedId, videoDetailFrames.length]);
+
+useEffect(() => {
+  frameHistoryRef.current
+    ?.querySelector(`[data-frame-index="${selectedFrameIndex}"]`)
+    ?.scrollIntoView({ block: "nearest" });
+}, [selectedFrameIndex]);
+
+function reviewLabel(value) {
+  if (value === "yes") return "❌ Violation";
+  if (value === "no") return "✅ No violation";
+  if (value === "unclear") return "⚠️ Unclear";
+  return "—";
+}
+
+function reviewIcon(value) {
+  if (value === "yes") return "❌";
+  if (value === "no") return "✅";
+  if (value === "unclear") return "⚠️";
+  return "—";
+}
+
   const visibleNotifications = notifications.filter((n) => notificationFilter === 'All' || !n.read);
 
   async function handleAnalysisResult(result) {
@@ -227,18 +288,144 @@ function App() {
 
       {selected && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-heading"><div className="modal-heading"><div><p className="eyebrow">INCIDENT #{selected.id}</p><h2 id="detail-heading">{selected.issue}</h2></div><button className="outline-button" onClick={() => setSelectedId(null)} aria-label="Close incident details">✕</button></div>
         <dl className="detail-grid"><div><dt>Location</dt><dd>{selected.location}</dd></div><div><dt>Camera</dt><dd>{selected.camera}</dd></div><div><dt>Time</dt><dd>{selected.time}</dd></div><div><dt>Source</dt><dd>{selected.source}</dd></div><div><dt>Model</dt><dd>{selected.model || "Not available"}</dd></div><div><dt>Confidence</dt><dd>{typeof selected.confidence === "number" ? `${Math.round(selected.confidence * 100)}% (sample)` : "Not provided by model"}</dd></div><div><dt>Severity</dt><dd>{selected.severity}</dd></div><div><dt>Status</dt><dd>{selected.status === "Review" ? "Under Review" : selected.status}</dd></div>{selected.model && <><div><dt>Helmet violation</dt><dd>{selected.helmetViolation}</dd></div><div><dt>Vest violation</dt><dd>{selected.vestViolation}</dd></div><div><dt>Boots violation</dt><dd>{selected.bootsViolation ?? "Not assessed (older incident)"}</dd></div><div><dt>Workers identified</dt><dd>{selected.workerCount ?? "Not available"}</dd></div><div><dt>Inference time</dt><dd>{selected.processingSeconds ?? "—"}s</dd></div><div><dt>Recorded detections</dt><dd>{selected.detectionCount ?? 1}</dd></div><div><dt>Last detected</dt><dd>{selected.lastSeenAt ? new Date(selected.lastSeenAt).toLocaleString() : "—"}</dd></div>{selected.videoName && <><div><dt>Video</dt><dd>{selected.videoName}</dd></div><div><dt>Frame range</dt><dd>{videoTime(selected.firstVideoSecond)} – {videoTime(selected.lastVideoSecond)}</dd></div></>}</>}</dl>
-        {selected.evidenceUrl ? (
-          <div className="evidence-section"><h3>Image evidence</h3><p className="muted">Model-generated assessment — verify the photograph before acting. Boot appearance cannot confirm certified safety footwear.</p><img src={selectedEvidenceUrl || selected.evidenceUrl} alt={`Evidence photo for incident ${selected.id}`} loading="lazy" /></div>
-        ) : <p className="muted">No evidence photo was saved for this incident.</p>}
-        {detailFrames.length > 1 && (
-          <div className="saved-frame-history"><h3>Saved detection frames ({detailFrames.length})</h3>
-            <p className="muted">Each frame is recorded; select its timestamp to inspect its stored evidence image.</p>
-            <div className="saved-frame-list">{detailFrames.filter(frame => frame.evidence_url).map(frame =>
-              <button type="button" key={frame.id} className="outline-button" onClick={() => setSelectedEvidenceUrl(frame.evidence_url)}>
-                {frame.video_seconds == null ? `Analysis #${frame.id}` : videoTime(frame.video_seconds)}
-              </button>
-            )}</div>
+        {selected.videoName && videoDetailFrames.length > 0 ? (
+          <div className="incident-frame-review">
+
+            <div className="incident-review-preview">
+              <h3>
+                Selected frame ? {videoTime(selectedDetailFrame?.video_seconds)}
+              </h3>
+
+              {selectedDetailFrame?.evidence_url ? (
+                <img
+                  className="incident-review-image"
+                  style={{ width: '100%', maxHeight: 320, objectFit: 'contain' }}
+                  src={selectedDetailFrame.evidence_url}
+                  alt={`Evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
+                  loading="lazy"
+                />
+              ) : (
+                <div className="incident-no-evidence">
+                  No evidence image was saved for this frame.
+                  Its model results are shown below.
+                </div>
+              )}
+
+              <div className="incident-review-ppe">
+                <div>
+                  <span>Helmet</span>
+                  <strong>{reviewLabel(selectedDetailFrame?.helmet_violation)}</strong>
+                </div>
+                <div>
+                  <span>Safety vest</span>
+                  <strong>{reviewLabel(selectedDetailFrame?.vest_violation)}</strong>
+                </div>
+                <div>
+                  <span>Boots</span>
+                  <strong>{reviewLabel(selectedDetailFrame?.boots_violation)}</strong>
+                </div>
+              </div>
+
+              <div className="incident-frame-navigation">
+                <button
+                  type="button"
+                  className="outline-button"
+                  disabled={selectedFrameIndex === 0}
+                  onClick={() => setSelectedFrameIndex(i => Math.max(0, i - 1))}
+                >
+                  ? Previous
+                </button>
+
+                <span>
+                  {selectedFrameIndex + 1} / {videoDetailFrames.length}
+                </span>
+
+                <button
+                  type="button"
+                  className="outline-button"
+                  disabled={selectedFrameIndex >= videoDetailFrames.length - 1}
+                  onClick={() =>
+                    setSelectedFrameIndex(i =>
+                      Math.min(videoDetailFrames.length - 1, i + 1)
+                    )
+                  }
+                >
+                  Next ?
+                </button>
+              </div>
+            </div>
+
+            <div className="incident-review-history">
+              <h3>Frame analysis history ({videoDetailFrames.length})</h3>
+
+              <div className="incident-frame-history" ref={frameHistoryRef}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Time</th>
+                      <th>Helmet</th>
+                      <th>Vest</th>
+                      <th>Boots</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {videoDetailFrames.map((frame, index) => (
+                      <tr
+                        key={frame.id}
+                        data-frame-index={index}
+                        className={
+                          index === selectedFrameIndex
+                            ? "incident-selected-frame"
+                            : ""
+                        }
+                      >
+                        <td>
+                          <button
+                            type="button"
+                            className="text-button"
+                            onClick={() => setSelectedFrameIndex(index)}
+                          >
+                            {videoTime(frame.video_seconds)}
+                          </button>
+                        </td>
+                        <td title={reviewLabel(frame.helmet_violation)}>
+                          {reviewIcon(frame.helmet_violation)}
+                        </td>
+                        <td title={reviewLabel(frame.vest_violation)}>
+                          {reviewIcon(frame.vest_violation)}
+                        </td>
+                        <td title={reviewLabel(frame.boots_violation)}>
+                          {reviewIcon(frame.boots_violation)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="muted">
+                Use ? / ? or click a timestamp to inspect its results.
+              </p>
+            </div>
           </div>
+        ) : selected.evidenceUrl ? (
+          <div className="evidence-section">
+            <h3>Image evidence</h3>
+            <p className="muted">
+              Verify the photograph before taking action.
+              Visual appearance cannot confirm certified safety footwear.
+            </p>
+            <img
+              src={selectedEvidenceUrl || selected.evidenceUrl}
+              alt={`Evidence photo for incident ${selected.id}`}
+              loading="lazy"
+            />
+          </div>
+        ) : (
+          <p className="muted">
+            No evidence photo was saved for this incident.
+          </p>
         )}
         <p className="muted">This is a prototype. A VLM prediction is not a verified safety violation; review all evidence before taking action.</p>
         <div className="modal-actions">{selected.status === "Open" && <button onClick={() => changeStatus(selected.id, "Review")}>Start review</button>}{activeStatus(selected.status) && <><button onClick={() => changeStatus(selected.id, "Resolved")}>Mark resolved</button><button className="outline-button" onClick={() => changeStatus(selected.id, "Dismissed")}>Dismiss false alert</button></>}{!activeStatus(selected.status) && <button className="outline-button" onClick={() => changeStatus(selected.id, "Review")}>Reopen for review</button>}</div>

@@ -154,6 +154,8 @@ export default function AnalysisUpload({ onResult }) {
 
       if (fromVideo) {
         updateFrame(metadata.timestampSeconds, { status: 'completed', result: data, error: '' });
+          // Switch the displayed frame only after analysis finishes.
+          setSelectedFrameTime(metadata.timestampSeconds); 
       } else {
         setImageResult(data);
       }
@@ -237,7 +239,6 @@ export default function AnalysisUpload({ onResult }) {
 
   function handleFrameExtracted(frameFile, metadata) {
     setActiveMedia('video');
-    setSelectedFrameTime(metadata.timestampSeconds);
     setFrameHistory((previous) => [
       ...previous,
       { timestampSeconds: metadata.timestampSeconds, file: frameFile,

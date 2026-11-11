@@ -128,65 +128,132 @@ class PPEStore:
 
     def save_analysis(self, result: dict, *, video_session_id: str = '',
                       video_name: str = '', video_seconds: float | None = None) -> dict:
-        """Insert each inference, linking consecutive same-violation video frames.
-
-        Group only within a single analysis-run UUID and while the incident remains
-        Open/Review. Grouping uses video timestamps, not slow model-processing time.
-        """
+        "Save each prediction, with at most one alert incident per uploaded video."
+        # One session = one incident; each frame remains in analyses.
         now = result.get('analyzed_at') or utc_now()
         overall = result['overall_status']
-        new_incident_id, incident_action = None, 'none'
+        incident_id, action = None, 'none'
         session = (video_session_id or '')[:128]
         video_name = (video_name or '')[:255]
         seconds = None if video_seconds is None else float(video_seconds)
+        is_alert = overall in ALERT_STATES
+
         with self.connect() as conn:
+            # Serialize the lookup + insert to avoid duplicate notifications.
             conn.execute('BEGIN IMMEDIATE')
-            if overall in ALERT_STATES:
+            previous = None
+            if session:
+                previous = conn.execute('''
+                    SELECT * FROM incidents
+                    WHERE video_session_id = ?
+                    ORDER BY id ASC LIMIT 1
+                ''', (session,)).fetchone()
+
+            if is_alert and previous:
+                # Union the reported concerns over the whole video: a later vest
+                # report must not overwrite an earlier helmet report, for example.
+                def merge_flag(old, new):
+                    values = {old, new}
+                    if 'yes' in values:
+                        return 'yes'
+                    if 'unclear' in values:
+                        return 'unclear'
+                    return 'no' if 'no' in values else None
+
+                helmet = merge_flag(previous['helmet_violation'], result.get('helmet_violation'))
+                vest = merge_flag(previous['vest_violation'], result.get('vest_violation'))
+                boots = merge_flag(previous['boots_violation'], result.get('boots_violation'))
+                aggregate = {'overall_status': 'violation' if 'yes' in (helmet, vest, boots) else 'unclear',
+                             'helmet_violation': helmet, 'vest_violation': vest, 'boots_violation': boots}
+                issue_key, _, next_status, severity = issue_for_result(aggregate)
+                reported = [name for name, value in (('helmet', helmet), ('vest', vest), ('boots', boots))
+                            if value == 'yes']
+                issue = ('Video PPE concerns: ' + ', '.join(reported)) if reported else 'Video PPE assessment unclear'
+                # Never undo an explicit safety-manager resolution/dismissal.
+                status = previous['status'] if previous['status'] in ('Resolved', 'Dismissed') else next_status
+                incident_id = previous['id']
+                action = 'grouped'
+                conn.execute('''
+                    UPDATE incidents
+                    SET issue_key = ?, issue = ?, status = ?, severity = ?,
+                        last_seen_at = ?, detection_count = detection_count + 1,
+                        first_video_seconds = CASE
+                            WHEN ? IS NULL THEN first_video_seconds
+                            WHEN first_video_seconds IS NULL THEN ?
+                            ELSE MIN(first_video_seconds, ?) END,
+                        last_video_seconds = CASE
+                            WHEN ? IS NULL THEN last_video_seconds
+                            WHEN last_video_seconds IS NULL THEN ?
+                            ELSE MAX(last_video_seconds, ?) END,
+                        evidence_url = COALESCE(?, evidence_url),
+                        worker_count = ?, processing_seconds = ?, model = ?,
+                        helmet_violation = ?, vest_violation = ?, boots_violation = ?
+                    WHERE id = ?
+                ''', (issue_key, issue, status, severity, now,
+                      seconds, seconds, seconds, seconds, seconds, seconds,
+                      result.get('evidence_url'), result.get('worker_count'),
+                      result.get('processing_seconds'), result.get('model'),
+                      helmet, vest, boots, incident_id))
+
+            elif is_alert:
                 issue_key, issue, status, severity = issue_for_result(result)
-                matched = None
-                if session and seconds is not None:
-                    matched = conn.execute('''
-                        SELECT id, last_video_seconds FROM incidents
-                        WHERE video_session_id = ? AND issue_key = ?
-                          AND status IN ('Open', 'Review')
-                        ORDER BY last_video_seconds DESC LIMIT 1
-                    ''', (session, issue_key)).fetchone()
-                if matched and matched['last_video_seconds'] is not None and \
-                        0 <= seconds - matched['last_video_seconds'] <= self.cooldown_seconds:
-                    new_incident_id = matched['id']
-                    incident_action = 'grouped'
+                first_second = seconds
+                if session:
+                    issue = ('Video PPE concerns: ' + ', '.join(
+                        name for name, flag in (
+                            ('helmet', result.get('helmet_violation')),
+                            ('vest', result.get('vest_violation')),
+                            ('boots', result.get('boots_violation')),
+                        ) if flag == 'yes')
+                    ) if status == 'Open' else 'Video PPE assessment unclear'
+                    earliest = conn.execute('''
+                        SELECT MIN(video_seconds) AS first_second FROM analyses
+                        WHERE video_session_id = ?
+                    ''', (session,)).fetchone()['first_second']
+                    if earliest is not None:
+                        first_second = min(float(earliest), seconds) if seconds is not None else float(earliest)
+                cur = conn.execute('''
+                    INSERT INTO incidents (
+                        issue_key, issue, status, severity, location, camera, source, model,
+                        worker_count, helmet_violation, vest_violation, boots_violation,
+                        processing_seconds, evidence_url, created_at, last_seen_at,
+                        detection_count, video_session_id, video_name,
+                        first_video_seconds, last_video_seconds
+                    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
+                ''', (issue_key, issue, status, severity,
+                      result.get('location') or 'Manual upload',
+                      result.get('camera') or 'UPLOAD', 'Ollama', result.get('model'),
+                      result.get('worker_count'), result.get('helmet_violation'),
+                      result.get('vest_violation'), result.get('boots_violation'),
+                      result.get('processing_seconds'), result.get('evidence_url'),
+                      now, now, session or None, video_name or None, first_second, seconds))
+                incident_id = cur.lastrowid
+                action = 'created'
+                conn.execute('''
+                    INSERT INTO notifications(incident_id, is_read, created_at)
+                    VALUES (?, 0, ?)
+                ''', (incident_id, now))
+                if session:
+                    # Link compliant/failed frames recorded before the first alert.
                     conn.execute('''
-                        UPDATE incidents
-                        SET last_seen_at = ?, detection_count = detection_count + 1,
-                            last_video_seconds = ?, evidence_url = COALESCE(?, evidence_url),
-                            worker_count = ?, processing_seconds = ?, model = ?,
-                            helmet_violation = ?, vest_violation = ?, boots_violation = ?
-                        WHERE id = ?
-                    ''', (now, seconds, result.get('evidence_url'), result.get('worker_count'),
-                          result.get('processing_seconds'), result.get('model'),
-                          result.get('helmet_violation'), result.get('vest_violation'),
-                          result.get('boots_violation'), new_incident_id))
-                else:
-                    incident_action = 'created'
-                    cursor = conn.execute('''
-                        INSERT INTO incidents (
-                            issue_key, issue, status, severity, location, camera, source, model,
-                            worker_count, helmet_violation, vest_violation, boots_violation,
-                            processing_seconds, evidence_url, created_at, last_seen_at,
-                            detection_count, video_session_id, video_name,
-                            first_video_seconds, last_video_seconds
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?)
-                    ''', (issue_key, issue, status, severity,
-                          result.get('location') or 'Manual upload',
-                          result.get('camera') or 'UPLOAD', 'Ollama', result.get('model'),
-                          result.get('worker_count'), result.get('helmet_violation'),
-                          result.get('vest_violation'), result.get('boots_violation'),
-                          result.get('processing_seconds'), result.get('evidence_url'),
-                          now, now, session or None, video_name or None, seconds, seconds))
-                    new_incident_id = cursor.lastrowid
-                    conn.execute('INSERT INTO notifications(incident_id, is_read, created_at) VALUES (?, 0, ?)',
-                                 (new_incident_id, now))
-            cursor = conn.execute('''
+                        UPDATE analyses SET incident_id = ?
+                        WHERE video_session_id = ? AND incident_id IS NULL
+                    ''', (incident_id, session))
+
+            elif previous:
+                # Even non-alert frames belong to the same video summary.
+                incident_id = previous['id']
+                action = 'linked'
+                conn.execute('''
+                    UPDATE incidents SET last_seen_at = ?,
+                        last_video_seconds = CASE
+                            WHEN ? IS NULL THEN last_video_seconds
+                            WHEN last_video_seconds IS NULL THEN ?
+                            ELSE MAX(last_video_seconds, ?) END
+                    WHERE id = ?
+                ''', (now, seconds, seconds, seconds, incident_id))
+
+            cur = conn.execute('''
                 INSERT INTO analyses (
                     analyzed_at, model, overall_status, helmet_violation, vest_violation,
                     boots_violation, worker_count, processing_seconds, location, camera,
@@ -199,11 +266,11 @@ class PPEStore:
                   result.get('processing_seconds'), result.get('location') or 'Manual upload',
                   result.get('camera') or 'UPLOAD', 'video_frame' if session else 'image',
                   session or None, video_name or None, seconds, result.get('evidence_url'),
-                  int(bool(result.get('review_unclear_boots'))), new_incident_id,
+                  int(bool(result.get('review_unclear_boots'))), incident_id,
                   result.get('error_text'), json.dumps(result, ensure_ascii=False)))
-            analysis_id = cursor.lastrowid
-        return {'analysis_id': analysis_id, 'incident_id': new_incident_id,
-                'incident_action': incident_action}
+            analysis_id = cur.lastrowid
+        return {'analysis_id': analysis_id, 'incident_id': incident_id,
+                'incident_action': action}
 
     def save_failure(self, *, model: str, location: str, camera: str, message: str,
                      processing_seconds: float, video_session_id: str = '',

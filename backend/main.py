@@ -254,7 +254,7 @@ def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if
     overall = overall_status(parsed, review_unclear_boots=review_unclear_boots)
     evidence_url = None
     # Evidence images have no base64 representation in browser localStorage.
-    if overall in ('violation', 'unclear'):
+    if overall in ('violation', 'unclear') or video_name:
         filename = f'{uuid4().hex}.jpg'
         (EVIDENCE_DIR / filename).write_bytes(image_bytes)
         evidence_url = f'/api/evidence/{filename}'

@@ -51,6 +51,37 @@ function App() {
     return fresh;
   }, []);
 
+useEffect(() => {
+  let cancelled = false;
+  let refreshing = false;
+
+  const interval = setInterval(async () => {
+    // Avoid unnecessary requests when the tab is hidden.
+    if (document.hidden || refreshing) return;
+
+    refreshing = true;
+
+    try {
+      const fresh = await apiJson('/api/state');
+
+      if (!cancelled) {
+        setData(fresh);
+      }
+    } catch (error) {
+      // Keep existing records visible if a refresh fails.
+      console.warn('Automatic dashboard refresh failed:', error);
+    } finally {
+      refreshing = false;
+    }
+  }, 5000);
+
+  return () => {
+    cancelled = true;
+    clearInterval(interval);
+  };
+}, []);
+
+
   useEffect(() => {
     let cancelled = false;
     (async () => {

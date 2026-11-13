@@ -27,10 +27,25 @@ function videoTime(seconds) {
     .map((value) => String(value).padStart(2, "0")).join(":");
 }
 
+function incidentDisplayTime(value, fallback = "—") {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat('en-SG', {
+    timeZone: 'Asia/Singapore',
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(date);
+}
+
 function App() {
   const [data, setData] = useState({ items: [], notifications: [], statistics: blankStats, trend: [] });
+  // PPE_SIDEBAR_HISTORY_V2
   const [filter, setFilter] = useState("All");
+  const [historyFilter, setHistoryFilter] = useState("All");
+  const [activePage, setActivePage] = useState("dashboard");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedNotificationRowId, setSelectedNotificationRowId] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationFilter, setNotificationFilter] = useState("All");
   const [theme, setTheme] = useState(() => localStorage.getItem("theme") || "light");
@@ -131,7 +146,10 @@ useEffect(() => {
   }, [selectedId]);
 
   const unread = notifications.filter((n) => !n.read).length;
-  const visibleItems = items.filter((item) => filter === 'All' || item.status === filter);
+  const activeItems = items.filter((item) => activeStatus(item.status));
+  const historyItems = items.filter((item) => ['Resolved', 'Dismissed', 'Archived'].includes(item.status));
+  const visibleItems = activeItems.filter((item) => filter === 'All' || item.status === filter);
+  const visibleHistory = historyItems.filter((item) => historyFilter === 'All' || item.status === historyFilter);
   const selected = items.find((item) => item.id === selectedId);
 
 const videoDetailFrames = detailFrames
@@ -215,6 +233,24 @@ function reviewIcon(value) {
     }
   }
 
+
+  async function archiveIncident(id) {
+    try {
+      await apiJson(`/api/incidents/${id}/archive`, {
+        method: 'POST'
+      });
+      await refreshData();
+      setSelectedNotificationRowId(null);
+      setMessage(
+        `Incident #${id} archived; notification cleared. Find it in Incident history.`
+      );
+    } catch (err) {
+      setStorageError(
+        `Could not archive incident: ${err.message}`
+      );
+    }
+  }
+
   async function changeStatus(id, status) {
     try {
       await apiJson(`/api/incidents/${id}`, {
@@ -250,8 +286,60 @@ function reviewIcon(value) {
   }
 
   return (
-    <main className={`dashboard ${theme}-theme`}>
+    <div className={`ppe-app-shell ${theme}-theme`}>
+      {sidebarOpen && (
+        <button
+          type="button"
+          className="ppe-nav-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      <aside className={`ppe-sidebar ${sidebarOpen ? 'ppe-sidebar-open' : ''}`}>
+        <div className="ppe-sidebar-title">
+          <strong>PPE Manager</strong>
+          <button type="button" className="ppe-close-sidebar"
+            aria-label="Close menu"
+            onClick={() => setSidebarOpen(false)}>
+            &times;
+          </button>
+        </div>
+
+        <nav className="ppe-side-nav" aria-label="Main navigation">
+          {[
+            ['dashboard', 'Dashboard'],
+            ['analysis', 'AI analysis'],
+            ['incidents', 'Incident management'],
+            ['history', 'Incident history'],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`ppe-nav-item ${activePage === id ? 'ppe-nav-active' : ''}`}
+              aria-current={activePage === id ? 'page' : undefined}
+              onClick={() => {
+                setActivePage(id);
+                setSidebarOpen(false);
+              }}
+            >
+              <span>{label}</span>
+              {(id === 'incidents' || id === 'history') && (
+                <small>
+                  {id === 'incidents' ? activeItems.length : historyItems.length}
+                </small>
+              )}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <main className={`dashboard ${theme}-theme`}>
       <header className="topbar">
+        <button type="button" className="ppe-open-sidebar"
+          onClick={() => setSidebarOpen(true)}>
+          Menu
+        </button>
         <div>
           <p className="eyebrow">SAFETY MONITORING · MANAGER PORTAL</p>
           <h1>PPE Dashboard</h1>
@@ -289,11 +377,25 @@ function reviewIcon(value) {
         </div>
       </header>
 
-      <AnalysisUpload onResult={handleAnalysisResult} />
+      <div className={activePage === 'analysis' ? '' : 'ppe-hidden-panel'}>
+        <AnalysisUpload onResult={handleAnalysisResult} />
+      </div>
 
       {storageError && <div className="feedback" role="alert">{storageError}<button className="text-button" onClick={() => setStorageError("")}>Dismiss</button></div>}
       {message && <div className="feedback" role="status">{message}<button className="text-button" onClick={() => setMessage("")}>Dismiss</button></div>}
 
+      {activePage === 'dashboard' && (
+        <>
+          <section className="panel ppe-overview-quicklinks">
+            <div>
+              <h2>Site overview</h2>
+              <p className="muted">Monitor safety assessments and incidents saved by this PPE system.</p>
+            </div>
+            <div className="ppe-quicklinks">
+              <button type="button" onClick={() => setActivePage('analysis')}>Analyse media</button>
+              <button type="button" className="outline-button" onClick={() => setActivePage('incidents')}>View active incidents</button>
+            </div>
+          </section>
        <section className="metrics">
          <Metric title="Model-reported PPE compliance" value={stats.complianceRate == null ? "—" : `${stats.complianceRate}%`} note={`${stats.compliant} compliant / ${stats.violations} violations · decisive predictions only`} />
          <Metric title="Worker observations" value={stats.workerObservations} note={`${stats.analyses} analysed attempts · not unique people`} />
@@ -310,21 +412,141 @@ function reviewIcon(value) {
          ) : <p className="muted empty-state">No decisive compliance predictions recorded yet. This chart will populate automatically after analyses.</p>}
        </section>
 
-      <section className="panel"><div className="table-heading"><div><h2>Incident management</h2><p className="muted">Open → Review → Resolved or Dismissed. Consecutive video detections are grouped; each frame is still recorded.</p></div><select aria-label="Filter incidents" value={filter} onChange={(e) => setFilter(e.target.value)}>{["All", "Open", "Review", "Resolved", "Dismissed"].map((status) => <option key={status}>{status}</option>)}</select></div>
-        <div className="table-scroll"><table><thead><tr><th>ID / Time</th><th>Location</th><th>Violation</th><th>Severity</th><th>Status</th><th>Action</th></tr></thead><tbody>
-          {visibleItems.map((item) => <tr key={item.id}><td>#{item.id}<br/><span className="muted">{item.time}</span></td><td>{item.location}</td><td>{item.issue}{item.detectionCount > 1 && <span className="grouped-count"> · {item.detectionCount} detections</span>}</td><td><span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span></td><td><span className={`status ${item.status.toLowerCase()}`}>{item.status === "Review" ? "Under Review" : item.status}</span></td><td><button className="outline-button" onClick={() => setSelectedId(item.id)}>Details</button></td></tr>)}
+        </>
+      )}
+
+      {activePage === 'incidents' && (
+      <section className="panel"><div className="table-heading"><div><h2>Incident management</h2><p className="muted">Open and under-review incidents only. Archive using X to preserve records in history.</p></div><select aria-label="Filter incidents" value={filter} onChange={(e) => setFilter(e.target.value)}>{["All", "Open", "Review"].map((status) => <option key={status}>{status}</option>)}</select></div>
+        <div className="table-scroll incident-table-scroll"><table className="incident-management-table"><thead><tr><th>ID / Time</th><th>Location</th><th>Violation</th><th>Severity</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+          {visibleItems.map((item) => <tr
+      key={item.id}
+      className={
+        selectedNotificationRowId === item.id
+          ? 'incident-notification-selected'
+          : ''
+      }
+      onPointerDown={(event) => {
+        if (event.pointerType === 'touch') {
+          setSelectedNotificationRowId(item.id);
+        }
+      }}
+    ><td>#{item.id}<br/><span className="muted">{item.time}</span></td><td>{item.location}</td><td>{item.issue}{item.detectionCount > 1 && <span className="grouped-count"> · {item.detectionCount} detections</span>}</td><td><span className={`severity ${item.severity.toLowerCase()}`}>{item.severity}</span></td><td><span className={`status ${item.status.toLowerCase()}`}>{item.status === "Review" ? "Under Review" : item.status}</span></td><td className="incident-actions-cell">
+      <div className="incident-row-actions">
+        <button
+          type="button"
+          className="outline-button"
+          onClick={() => setSelectedId(item.id)}
+        >
+          Details
+        </button>
+
+        {activeStatus(item.status) && (
+          <button
+            type="button"
+            className="incident-notification-delete"
+            title="Archive incident and clear notification"
+            aria-label={`Archive incident #${item.id} and clear notification`}
+            onClick={() => archiveIncident(item.id)}
+          >
+            &times;
+          </button>
+        )}
+      </div>
+    </td></tr>)}
           {visibleItems.length === 0 && <tr><td colSpan="6">No incidents match this filter.</td></tr>}
         </tbody></table></div>
       </section>
+      )}
+
+      {activePage === 'history' && (
+        <section className="panel">
+          <div className="table-heading">
+            <div>
+              <h2>Incident history</h2>
+              <p className="muted">Resolved, dismissed and archived records. Evidence remains available in Details.</p>
+            </div>
+            <select
+              aria-label="Filter incident history"
+              value={historyFilter}
+              onChange={(e) => setHistoryFilter(e.target.value)}
+            >
+              {['All', 'Resolved', 'Dismissed', 'Archived'].map(
+                (status) => <option key={status}>{status}</option>
+              )}
+            </select>
+          </div>
+
+          <p className="muted ppe-history-count">
+            {visibleHistory.length} of {historyItems.length} historical incidents
+          </p>
+
+          <div className="table-scroll history-table-scroll">
+            <table className="incident-management-table">
+              <thead>
+                <tr>
+                  <th>ID / Time</th>
+                  <th>Location</th>
+                  <th>Violation</th>
+                  <th>Severity</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleHistory.map((item) => (
+                  <tr key={item.id}>
+                    <td>#{item.id}<span className="muted">{' | '}{item.time}</span></td>
+                    <td>{item.location}</td>
+                    <td>
+                      {item.issue}
+                      {item.detectionCount > 1 && (
+                        <span className="grouped-count">
+                          {' | '}{item.detectionCount} detections
+                        </span>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`severity ${item.severity.toLowerCase()}`}>
+                        {item.severity}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status ${item.status.toLowerCase()}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="outline-button"
+                        onClick={() => setSelectedId(item.id)}
+                      >
+                        Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {visibleHistory.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="ppe-empty-history">
+                      No historical records match this filter.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {selected && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-heading"><div className="modal-heading"><div><p className="eyebrow">INCIDENT #{selected.id}</p><h2 id="detail-heading">{selected.issue}</h2></div><button className="outline-button" onClick={() => setSelectedId(null)} aria-label="Close incident details">✕</button></div>
-        <dl className="detail-grid"><div><dt>Location</dt><dd>{selected.location}</dd></div><div><dt>Camera</dt><dd>{selected.camera}</dd></div><div><dt>Time</dt><dd>{selected.time}</dd></div><div><dt>Source</dt><dd>{selected.source}</dd></div><div><dt>Model</dt><dd>{selected.model || "Not available"}</dd></div><div><dt>Confidence</dt><dd>{typeof selected.confidence === "number" ? `${Math.round(selected.confidence * 100)}% (sample)` : "Not provided by model"}</dd></div><div><dt>Severity</dt><dd>{selected.severity}</dd></div><div><dt>Status</dt><dd>{selected.status === "Review" ? "Under Review" : selected.status}</dd></div>{selected.model && <><div><dt>Helmet violation</dt><dd>{selected.helmetViolation}</dd></div><div><dt>Vest violation</dt><dd>{selected.vestViolation}</dd></div><div><dt>Boots violation</dt><dd>{selected.bootsViolation ?? "Not assessed (older incident)"}</dd></div><div><dt>Workers identified</dt><dd>{selected.workerCount ?? "Not available"}</dd></div><div><dt>Inference time</dt><dd>{selected.processingSeconds ?? "—"}s</dd></div><div><dt>Recorded detections</dt><dd>{selected.detectionCount ?? 1}</dd></div><div><dt>Last detected</dt><dd>{selected.lastSeenAt ? new Date(selected.lastSeenAt).toLocaleString() : "—"}</dd></div>{selected.videoName && <><div><dt>Video</dt><dd>{selected.videoName}</dd></div><div><dt>Frame range</dt><dd>{videoTime(selected.firstVideoSecond)} – {videoTime(selected.lastVideoSecond)}</dd></div></>}</>}</dl>
+        
         {selected.videoName && videoDetailFrames.length > 0 ? (
           <div className="incident-frame-review">
 
             <div className="incident-review-preview">
               <h3>
-                Selected frame ? {videoTime(selectedDetailFrame?.video_seconds)}
+                Selected frame: {videoTime(selectedDetailFrame?.video_seconds)}
               </h3>
 
               {selectedDetailFrame?.evidence_url ? (
@@ -364,7 +586,7 @@ function reviewIcon(value) {
                   disabled={selectedFrameIndex === 0}
                   onClick={() => setSelectedFrameIndex(i => Math.max(0, i - 1))}
                 >
-                  ? Previous
+                  &larr; Previous
                 </button>
 
                 <span>
@@ -381,7 +603,7 @@ function reviewIcon(value) {
                     )
                   }
                 >
-                  Next ?
+                  Next &rarr;
                 </button>
               </div>
             </div>
@@ -436,7 +658,7 @@ function reviewIcon(value) {
               </div>
 
               <p className="muted">
-                Use ? / ? or click a timestamp to inspect its results.
+                Use &larr; / &rarr; or click a timestamp to inspect its results.
               </p>
             </div>
           </div>
@@ -458,11 +680,81 @@ function reviewIcon(value) {
             No evidence photo was saved for this incident.
           </p>
         )}
-        <p className="muted">This is a prototype. A VLM prediction is not a verified safety violation; review all evidence before taking action.</p>
+                {/* Compact incident metadata, intentionally BELOW the frame/image reviewer */}
+        <section className="incident-summary-section" aria-label="Incident information">
+          <div className="incident-summary-header">
+            <h3>Incident information</h3>
+            <div className="incident-summary-badges">
+              <span className={`severity ${selected.severity?.toLowerCase() || 'medium'}`}>
+                {selected.severity}
+              </span>
+              <span className={`status ${selected.status?.toLowerCase() || 'open'}`}>
+                {selected.status === 'Review' ? 'Under Review' : selected.status}
+              </span>
+            </div>
+          </div>
+
+          <div className="incident-summary-grid">
+            <div className="incident-summary-group">
+              <h4>Site &amp; source</h4>
+              <div className="incident-summary-pair">
+                <span>Location</span><strong>{selected.location}</strong>
+              </div>
+              <div className="incident-summary-pair">
+                <span>{selected.videoName ? 'Video file' : 'Camera / source'}</span>
+                <strong className="incident-summary-break">
+                  {selected.videoName || (selected.camera === 'UPLOAD' ? 'Manual upload' : selected.camera)}
+                </strong>
+              </div>
+              <div className="incident-summary-pair">
+                <span>AI model</span>
+                <strong className="incident-summary-break">
+                  {selected.model || 'Not available'}
+                </strong>
+              </div>
+            </div>
+
+            <div className="incident-summary-group">
+              <h4>Activity &amp; timing</h4>
+              <div className="incident-summary-pair">
+                <span>First detected</span>
+                <strong>{incidentDisplayTime(selected.createdAt, selected.time || '—')}</strong>
+              </div>
+              <div className="incident-summary-pair">
+                <span>Last detected</span>
+                <strong>{incidentDisplayTime(selected.lastSeenAt, '—')}</strong>
+              </div>
+              {selected.videoName && (
+                <>
+                  <div className="incident-summary-pair">
+                    <span>Frame range</span>
+                    <strong>{videoTime(selected.firstVideoSecond)} – {videoTime(selected.lastVideoSecond)}</strong>
+                  </div>
+                  <div className="incident-summary-pair">
+                    <span>Flagged frames</span>
+                    <strong>{selected.detectionCount ?? 1}</strong>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Standalone photos have no per-frame PPE viewer, so keep their classification here. */}
+          {!selected.videoName && selected.model && (
+            <div className="incident-summary-photo-ppe">
+              <span>PPE assessment</span>
+              <span>Helmet: <strong>{reviewLabel(selected.helmetViolation)}</strong></span>
+              <span>Vest: <strong>{reviewLabel(selected.vestViolation)}</strong></span>
+              <span>Boots: <strong>{reviewLabel(selected.bootsViolation)}</strong></span>
+            </div>
+          )}
+        </section>
+<p className="muted">This is a prototype. A VLM prediction is not a verified safety violation; review all evidence before taking action.</p>
         <div className="modal-actions">{selected.status === "Open" && <button onClick={() => changeStatus(selected.id, "Review")}>Start review</button>}{activeStatus(selected.status) && <><button onClick={() => changeStatus(selected.id, "Resolved")}>Mark resolved</button><button className="outline-button" onClick={() => changeStatus(selected.id, "Dismissed")}>Dismiss false alert</button></>}{!activeStatus(selected.status) && <button className="outline-button" onClick={() => changeStatus(selected.id, "Review")}>Reopen for review</button>}</div>
       </section></div>}
       <footer>School project prototype · Image/video → FastAPI → configured Ollama · SQLite records · No live camera or Telegram integration</footer>
-    </main>
+      </main>
+    </div>
   );
 }
 

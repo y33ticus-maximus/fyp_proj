@@ -306,6 +306,23 @@ def change_incident(incident_id: int, update: IncidentStatusChange):
     return {'ok': True}
 
 
+@app.delete('/api/incidents/{incident_id}/notification')
+def delete_incident_notification(incident_id: int):
+    if not STORE.delete_incident_notification(incident_id):
+        raise HTTPException(404, detail='Notification not found.')
+    return {'ok': True}
+
+
+# PPE_ARCHIVE_HISTORY_V1
+@app.post('/api/incidents/{incident_id}/archive')
+def archive_incident(incident_id: int):
+    if not STORE.archive_incident(incident_id):
+        raise HTTPException(
+            404, detail='Active incident not found.'
+        )
+    return {'ok': True}
+
+
 @app.get('/api/incidents/{incident_id}/analyses')
 def incident_frames(incident_id: int):
     return {'analyses': STORE.incident_analyses(incident_id)}

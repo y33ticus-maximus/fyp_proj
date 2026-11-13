@@ -14,7 +14,7 @@ import sqlite3
 
 SGT = timezone(timedelta(hours=8))
 ALERT_STATES = {'violation', 'unclear'}
-INCIDENT_STATUSES = {'Open', 'Review', 'Resolved', 'Dismissed'}
+INCIDENT_STATUSES = {'Open', 'Review', 'Resolved', 'Dismissed', 'Archived'}
 
 
 def utc_now() -> str:
@@ -170,7 +170,7 @@ class PPEStore:
                             if value == 'yes']
                 issue = ('Video PPE concerns: ' + ', '.join(reported)) if reported else 'Video PPE assessment unclear'
                 # Never undo an explicit safety-manager resolution/dismissal.
-                status = previous['status'] if previous['status'] in ('Resolved', 'Dismissed') else next_status
+                status = previous['status'] if previous['status'] in ('Resolved', 'Dismissed', 'Archived') else next_status
                 incident_id = previous['id']
                 action = 'grouped'
                 conn.execute('''
@@ -337,6 +337,36 @@ class PPEStore:
             raise ValueError('Invalid incident status')
         with self.connect() as conn:
             cur = conn.execute('UPDATE incidents SET status=? WHERE id=?', (status, incident_id))
+            if cur.rowcount and status in ('Resolved', 'Dismissed', 'Archived'):
+                conn.execute(
+                    'DELETE FROM notifications WHERE incident_id=?',
+                    (incident_id,)
+                )
+            return cur.rowcount > 0
+
+    def delete_incident_notification(self, incident_id: int) -> bool:
+        with self.connect() as conn:
+            cur = conn.execute(
+                'DELETE FROM notifications WHERE incident_id=?',
+                (incident_id,)
+            )
+            return cur.rowcount > 0
+
+    # PPE_ARCHIVE_HISTORY_V1
+    def archive_incident(self, incident_id: int) -> bool:
+        """Archive an active incident, retaining evidence and history."""
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            cur = conn.execute(
+                "UPDATE incidents SET status='Archived' "
+                "WHERE id=? AND status IN ('Open', 'Review')",
+                (incident_id,)
+            )
+            if cur.rowcount:
+                conn.execute(
+                    'DELETE FROM notifications WHERE incident_id=?',
+                    (incident_id,)
+                )
             return cur.rowcount > 0
 
     def mark_notification(self, notification_id: int, is_read: bool = True) -> bool:

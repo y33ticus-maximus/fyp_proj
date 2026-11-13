@@ -1,0 +1,343 @@
+"""Prototype PPE image analysis: browser -> FastAPI -> configured Ollama -> browser.
+
+Do not expose this development API on the public internet. It has no authentication.
+"""
+
+import base64
+from datetime import datetime, timezone
+from io import BytesIO
+import json
+import os
+from pathlib import Path
+import re
+import time
+from typing import Literal
+from urllib.parse import urlparse
+from uuid import uuid4
+
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+import httpx
+from PIL import Image, ImageOps, UnidentifiedImageError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from storage import PPEStore
+
+# Load the local .env file without requiring python-dotenv.
+# Never commit this file; the remote server URL belongs in your local environment.
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = BASE_DIR / '.env'
+if ENV_FILE.is_file():
+    for line in ENV_FILE.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        os.environ.setdefault(key.strip(), re.sub(r"\s+#.*$", "", value.strip()).strip('"').strip("'"))
+
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', '').rstrip('/')
+ALLOWED_MODELS = [name.strip() for name in os.getenv('OLLAMA_MODELS', 'qwen3.8:27b').split(',') if name.strip()]
+REQUEST_TIMEOUT = float(os.getenv('OLLAMA_TIMEOUT_SECONDS', '240'))
+MAX_UPLOAD_SIZE = 8 * 1024 * 1024
+MAX_IMAGE_SIDE = 1600
+EVIDENCE_DIR = BASE_DIR / 'data' / 'evidence'
+EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+DB_PATH = Path(os.getenv('PPE_DB_PATH', str(BASE_DIR / 'data' / 'ppe_monitoring.sqlite3')))
+INCIDENT_WINDOW_SECONDS = float(os.getenv('PPE_DUPLICATE_WINDOW_SECONDS', '120'))
+STORE = PPEStore(DB_PATH, cooldown_seconds=INCIDENT_WINDOW_SECONDS)
+OLLAMA_LOCATION = 'local' if urlparse(OLLAMA_BASE_URL).hostname in ('127.0.0.1', 'localhost', '::1') else 'remote'
+
+PROMPT = """Assess this construction-site image for PPE compliance.
+Inspect every VISIBLE WORKER for three PPE types: safety helmets, high-visibility vests,
+and apparent protective work boots. Check each visible worker separately.
+Use the following image-level violation labels (yes / no / unclear):
+- helmet_violation = 'yes' when at least one worker is clearly missing a helmet;
+  'no' only when all workers' heads can be assessed and helmets are present;
+  otherwise 'unclear'.
+- vest_violation = 'yes' when at least one worker clearly lacks a high-visibility vest;
+  'no' only when all workers' torsos can be assessed and vests are present;
+  otherwise 'unclear'.
+- boots_violation = 'yes' when at least one worker clearly has bare feet, sandals,
+  open-toed footwear, or clearly lacks boots when the feet are fully visible;
+  'no' only if ALL visible workers' feet can be assessed and all appear to wear
+  sturdy enclosed work boots; otherwise 'unclear'. Normal closed shoes and
+  partially covered feet are ambiguous: do NOT guess.
+Appearance cannot prove any boots or shoes meet safety certification standards.
+For each worker use 'worn', 'missing', or 'unclear' for helmet, vest, and boots.
+Only count people who appear to be working in a PPE-relevant setting.
+If no visible workers, set worker_count to 0 and all violation fields to 'unclear'.
+Do not invent workers or PPE you cannot see. Never guess when blocked from view.
+Return ONLY valid JSON with this exact structure (example is not a prediction):
+{
+  "worker_count": 2,
+  "workers": [{"position": "left", "helmet": "worn", "vest": "missing", "boots": "unclear"}],
+  "helmet_violation": "no",
+  "vest_violation": "yes",
+  "boots_violation": "unclear"
+}
+For violation fields only use yes/no/unclear. No surrounding commentary or markdown.
+"""
+
+TriState = Literal['yes', 'no', 'unclear']
+
+
+class Worker(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+    position: str = ''
+    helmet: str = 'unclear'
+    vest: str = 'unclear'
+    boots: str = 'unclear'
+
+
+class PPEOutput(BaseModel):
+    model_config = ConfigDict(extra='ignore')
+    worker_count: int
+    workers: list[Worker] = Field(default_factory=list)
+    helmet_violation: TriState
+    vest_violation: TriState
+    boots_violation: TriState = 'unclear'
+
+
+def extract_response(content: str) -> PPEOutput:
+    if not content or not content.strip():
+        raise ValueError('Model returned an empty response.')
+    cleaned = re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$', '', content.strip(), flags=re.IGNORECASE)
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find('{'), cleaned.rfind('}')
+        if start == -1 or end < start:
+            raise ValueError('Model response is not valid JSON.') from None
+        try:
+            payload = json.loads(cleaned[start:end + 1])
+        except json.JSONDecodeError:
+            raise ValueError('Model response contains malformed JSON.') from None
+    try:
+        parsed = PPEOutput.model_validate(payload)
+    except ValidationError:
+        raise ValueError('Model JSON is missing or has invalid PPE classification fields.') from None
+    if parsed.worker_count < 0 or parsed.worker_count > 100:
+        raise ValueError('Model returned an invalid worker count.')
+    return parsed
+
+
+def overall_status(output: PPEOutput, review_unclear_boots: bool = False) -> str:
+    """Boot uncertainty is visible but does not flood incident alerts by default.
+
+    When a site explicitly chooses to review uncertain footwear, it can opt in.
+    No result marked boots_unverified should be counted as fully PPE compliant.
+    """
+    if output.worker_count == 0:
+        return 'no_workers'
+    if 'yes' in (output.helmet_violation, output.vest_violation, output.boots_violation):
+        return 'violation'
+    if 'unclear' in (output.helmet_violation, output.vest_violation):
+        return 'unclear'
+    if output.boots_violation == 'unclear':
+        return 'unclear' if review_unclear_boots else 'boots_unverified'
+    return 'compliant'
+
+
+def normalise_image(contents: bytes) -> bytes:
+    """Check that bytes are an actual image; normalise dimensions/orientation to JPEG."""
+    try:
+        with Image.open(BytesIO(contents)) as raw:
+            if raw.format not in ('JPEG', 'PNG', 'WEBP'):
+                raise ValueError('Only JPEG, PNG and WebP images are supported.')
+            if raw.width * raw.height > 30_000_000:
+                raise ValueError('Image resolution is too large.')
+            image = ImageOps.exif_transpose(raw).convert('RGB')
+            image.thumbnail((MAX_IMAGE_SIDE, MAX_IMAGE_SIDE))
+            result = BytesIO()
+            image.save(result, format='JPEG', quality=88, optimize=True)
+            return result.getvalue()
+    except (UnidentifiedImageError, OSError):
+        raise ValueError('This file is not a readable image.') from None
+
+
+app = FastAPI(title='PPE Safety Manager', version='0.2.0')
+
+
+@app.get('/api/health')
+def health():
+    return {'status': 'ready', 'ollama_configured': bool(OLLAMA_BASE_URL), 'models': ALLOWED_MODELS, 'database': 'ready'}
+
+
+@app.get('/api/models')
+def available_models():
+    """Check which allowed model names are currently present on Ollama."""
+    if not OLLAMA_BASE_URL:
+        return {'connected': False, 'models': ALLOWED_MODELS, 'available': [], 'error': 'OLLAMA_BASE_URL is not set in backend/.env.'}
+    try:
+        with httpx.Client(timeout=8, trust_env=False) as client:
+            response = client.get(f'{OLLAMA_BASE_URL}/api/tags')
+            response.raise_for_status()
+            remote = response.json()
+        known = {item.get('name', '') for item in remote.get('models', []) if isinstance(item, dict)}
+        return {'connected': True, 'models': ALLOWED_MODELS, 'available': [m for m in ALLOWED_MODELS if m in known], 'deployment': OLLAMA_LOCATION}
+    except (httpx.HTTPError, ValueError, KeyError):
+        return {'connected': False, 'models': ALLOWED_MODELS, 'available': [], 'error': 'Cannot reach the configured Ollama server. Check its address and your network access.'}
+
+
+@app.post('/api/analyze')
+def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if ALLOWED_MODELS else 'qwen3.8:27b'),
+            location: str = Form('Manual upload'), camera: str = Form('UPLOAD'),
+            review_unclear_boots: bool = Form(False), video_session_id: str = Form(''),
+            video_name: str = Form(''), video_timestamp_seconds: float | None = Form(None)):
+    if not OLLAMA_BASE_URL:
+        raise HTTPException(503, detail='Ollama is not configured. Set OLLAMA_BASE_URL in backend/.env.')
+    if model not in ALLOWED_MODELS:
+        raise HTTPException(400, detail='That model is not enabled in backend/.env.')
+    if file.content_type not in ('image/jpeg', 'image/png', 'image/webp'):
+        raise HTTPException(415, detail='Upload a JPG, PNG or WebP image.')
+    contents = file.file.read(MAX_UPLOAD_SIZE + 1)
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, detail='Image too large. Maximum upload size is 8 MB.')
+    if not contents:
+        raise HTTPException(400, detail='Image is empty.')
+    try:
+        image_bytes = normalise_image(contents)
+    except ValueError as error:
+        raise HTTPException(400, detail=str(error)) from None
+
+    location = location.strip()[:100] or 'Manual upload'
+    camera = camera.strip()[:50] or 'UPLOAD'
+    if video_timestamp_seconds is not None and (not 0 <= video_timestamp_seconds <= 86_400 * 7):
+        raise HTTPException(400, detail='Invalid video frame timestamp.')
+    video_session_id = (video_session_id or '')[:128]
+    video_name = (video_name or '')[:255]
+    started = time.monotonic()
+
+    def record_failure(message: str):
+        STORE.save_failure(
+            model=model, location=location, camera=camera, message=message,
+            processing_seconds=round(time.monotonic() - started, 2),
+            video_session_id=video_session_id, video_name=video_name,
+            video_seconds=video_timestamp_seconds,
+        )
+
+    try:
+        request_json = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': PROMPT, 'images': [base64.b64encode(image_bytes).decode('ascii')]}],
+            'stream': False,
+            'format': 'json',
+            'options': {'temperature': 0},
+        }
+        with httpx.Client(timeout=REQUEST_TIMEOUT, trust_env=False) as client:
+            response = client.post(f'{OLLAMA_BASE_URL}/api/chat', json=request_json)
+            response.raise_for_status()
+            body = response.json()
+        content = body.get('message', {}).get('content', '')
+        parsed = extract_response(content)
+    except httpx.TimeoutException:
+        message = f'The configured model did not respond within {REQUEST_TIMEOUT:g} seconds.'
+        record_failure(message)
+        raise HTTPException(504, detail=message) from None
+    except httpx.HTTPStatusError as error:
+        status = error.response.status_code
+        if status == 404:
+            detail = f'Model {model} is not available on Ollama.'
+        else:
+            detail = f'Ollama returned HTTP {status}. Check the backend terminal for details.'
+        record_failure(detail)
+        raise HTTPException(502, detail=detail) from None
+    except (httpx.RequestError, httpx.InvalidURL):
+        message = 'Cannot connect to the configured Ollama server. Verify your network and backend/.env.'
+        record_failure(message)
+        raise HTTPException(502, detail=message) from None
+    except (ValueError, KeyError, TypeError) as error:
+        message = f'Model response could not be used: {error}'
+        record_failure(message)
+        raise HTTPException(502, detail=message) from None
+
+    duration = round(time.monotonic() - started, 2)
+    overall = overall_status(parsed, review_unclear_boots=review_unclear_boots)
+    evidence_url = None
+    # Evidence images have no base64 representation in browser localStorage.
+    if overall in ('violation', 'unclear') or video_name:
+        filename = f'{uuid4().hex}.jpg'
+        (EVIDENCE_DIR / filename).write_bytes(image_bytes)
+        evidence_url = f'/api/evidence/{filename}'
+
+    result = {
+        'model': model,
+        'overall_status': overall,
+        'helmet_violation': parsed.helmet_violation,
+        'vest_violation': parsed.vest_violation,
+        'boots_violation': parsed.boots_violation,
+        'review_unclear_boots': review_unclear_boots,
+        'worker_count': parsed.worker_count,
+        'workers': [worker.model_dump() for worker in parsed.workers],
+        'processing_seconds': duration,
+        'analyzed_at': datetime.now(timezone.utc).isoformat(),
+        'evidence_url': evidence_url,
+        'location': location,
+        'camera': camera,
+    }
+    record = STORE.save_analysis(result, video_session_id=video_session_id,
+                                 video_name=video_name, video_seconds=video_timestamp_seconds)
+    return {**result, **record}
+
+
+@app.get('/api/evidence/{filename}')
+def evidence(filename: str):
+    if not re.fullmatch(r'[a-f0-9]{32}\.jpg', filename):
+        raise HTTPException(404, detail='Evidence image not found.')
+    path = EVIDENCE_DIR / filename
+    if not path.is_file():
+        raise HTTPException(404, detail='Evidence image not found.')
+    return FileResponse(path, media_type='image/jpeg', headers={'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff'})
+
+
+# Persistent state is accessible even when the Ollama model is disconnected.
+@app.get('/api/state')
+def dashboard_state():
+    return STORE.state()
+
+
+class IncidentStatusChange(BaseModel):
+    status: Literal['Open', 'Review', 'Resolved', 'Dismissed']
+
+
+@app.patch('/api/incidents/{incident_id}')
+def change_incident(incident_id: int, update: IncidentStatusChange):
+    if not STORE.update_status(incident_id, update.status):
+        raise HTTPException(404, detail='Incident not found.')
+    return {'ok': True}
+
+
+@app.get('/api/incidents/{incident_id}/analyses')
+def incident_frames(incident_id: int):
+    return {'analyses': STORE.incident_analyses(incident_id)}
+
+
+class NotificationChange(BaseModel):
+    read: bool = True
+
+
+@app.patch('/api/notifications/{notification_id}')
+def change_notification(notification_id: str, update: NotificationChange):
+    match = re.fullmatch(r'notification-(\d+)', notification_id)
+    if not match or not STORE.mark_notification(int(match.group(1)), update.read):
+        raise HTTPException(404, detail='Notification not found.')
+    return {'ok': True}
+
+
+@app.post('/api/notifications/mark-all-read')
+def read_all_notifications():
+    STORE.mark_all_read()
+    return {'ok': True}
+
+
+class BrowserMigration(BaseModel):
+    client_id: str = Field(min_length=1, max_length=128)
+    items: list[dict] = Field(default_factory=list)
+    notifications: list[dict] = Field(default_factory=list)
+
+
+@app.post('/api/migrate-browser-state')
+def migrate_browser_state(payload: BrowserMigration):
+    if len(payload.items) > 5000 or len(payload.notifications) > 5000:
+        raise HTTPException(413, detail='Too many legacy incidents to import in one request.')
+    count = STORE.import_browser_incidents(payload.client_id, payload.items, payload.notifications)
+    return {'imported': count}

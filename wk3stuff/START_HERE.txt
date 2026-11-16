@@ -1,0 +1,11 @@
+PPE boots validation review package
+
+1. Double-click Boots_Validation_Review_90_Images.html (works without internet).
+2. View each original image and optionally turn on YOLO bounding-box overlays.
+3. For each image choose yes/no/unclear for helmet, vest and boots, or Exclude & next if not applicable.
+4. Export ground_truth_boots_review.csv and keep it next to the images/ folder for notebook use.
+5. Do not score rows unless review_status=verified; original source annotation is NOT ground truth.
+6. Your existing evaluation notebook currently scores helmet and vest only; add boots scoring before interpreting boots results.
+7. This is a *new* boots-focused validation benchmark and should remain distinct from your original 60-image set.
+
+Dataset attribution is stored in the exported CSV and each review item. Check licensing before posting source images publicly.

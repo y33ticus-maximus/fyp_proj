@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 4
+names: ['Boots', 'No-Boots', 'No-Vest', 'Vest']
+
+roboflow:
+  workspace: epidataset-fnaft
+  project: vest-boots
+  version: 6
+  license: Public Domain
+  url: https://universe.roboflow.com/epidataset-fnaft/vest-boots/dataset/6

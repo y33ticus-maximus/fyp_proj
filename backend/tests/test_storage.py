@@ -26,18 +26,36 @@ def prediction(status='violation', helmet='yes', vest='no', boots='unclear'):
 
 
 def test_video_duplicate_grouping_and_all_frames_saved(store):
-    entries = [store.save_analysis(prediction(), video_session_id='one-run',
-                                   video_name='video.mp4', video_seconds=t)
-               for t in [0, 5, 10, 135]]
-    assert [e['incident_action'] for e in entries] == ['created', 'grouped', 'grouped', 'created']
-    assert entries[0]['incident_id'] == entries[1]['incident_id'] == entries[2]['incident_id']
-    assert entries[3]['incident_id'] != entries[0]['incident_id']
+    entries = [
+        store.save_analysis(
+            prediction(),
+            video_session_id="one-run",
+            video_name="video.mp4",
+            video_seconds=t,
+        )
+        for t in [0, 5, 10, 135]
+    ]
+
+    assert [e["incident_action"] for e in entries] == [
+        "created", "grouped", "grouped", "grouped"
+    ]
+
+    incident_id = entries[0]["incident_id"]
+
+    assert all(e["incident_id"] == incident_id for e in entries)
+
     state = store.state()
-    assert state['statistics']['analyses'] == 4
-    assert state['statistics']['incidents'] == 2
-    assert [i['detectionCount'] for i in sorted(state['items'], key=lambda x:x['id'])] == [3, 1]
-    assert len(state['notifications']) == 2
-    assert [x['video_seconds'] for x in store.incident_analyses(entries[0]['incident_id'])] == [0, 5, 10]
+
+    assert len(state["items"]) == 1
+    assert len(state["notifications"]) == 1
+    assert state["items"][0]["detectionCount"] == 4
+
+    frames = store.incident_analyses(incident_id)
+    assert len(frames) == 4
+    assert [f["video_seconds"] for f in frames] == [
+        0.0, 5.0, 10.0, 135.0
+    ]
+
 
 
 def test_compliance_denominator_excludes_undetermined_and_errors(store):
@@ -57,13 +75,40 @@ def test_compliance_denominator_excludes_undetermined_and_errors(store):
 
 
 def test_separate_runs_and_resolved_incidents_do_not_merge(store):
-    a = store.save_analysis(prediction(), video_session_id='first', video_seconds=0)
-    b = store.save_analysis(prediction(), video_session_id='second', video_seconds=5)
-    assert a['incident_id'] != b['incident_id']
-    store.update_status(a['incident_id'], 'Resolved')
-    c = store.save_analysis(prediction(), video_session_id='first', video_seconds=10)
-    assert c['incident_action'] == 'created'
-    assert c['incident_id'] not in {a['incident_id'], b['incident_id']}
+    a = store.save_analysis(
+        prediction(),
+        video_session_id="first",
+        video_seconds=0,
+    )
+
+    b = store.save_analysis(
+        prediction(),
+        video_session_id="second",
+        video_seconds=5,
+    )
+
+    assert a["incident_id"] != b["incident_id"]
+    assert store.update_status(a["incident_id"], "Resolved")
+
+    c = store.save_analysis(
+        prediction(),
+        video_session_id="first",
+        video_seconds=10,
+    )
+
+    assert c["incident_action"] == "grouped"
+    assert c["incident_id"] == a["incident_id"]
+
+    state = store.state()
+    incidents = {i["id"]: i for i in state["items"]}
+
+    assert len(incidents) == 2
+    assert incidents[a["incident_id"]]["status"] == "Resolved"
+    assert len(store.incident_analyses(a["incident_id"])) == 2
+
+    assert len(state["notifications"]) == 1
+    assert state["notifications"][0]["incidentId"] == b["incident_id"]
+
 
 
 def test_legacy_browser_import_keeps_real_records_only_and_is_idempotent(store):
@@ -97,19 +142,40 @@ def test_persistence_across_store_instances(tmp_path):
 
 
 def test_api_state_and_notification_updates(monkeypatch, store):
-    monkeypatch.setattr(main, 'STORE', store)
+    monkeypatch.setattr(main, "STORE", store)
+
     item = store.save_analysis(prediction())
+
     with TestClient(main.app) as client:
-        result = client.get('/api/state')
-        assert result.status_code == 200
-        state = result.json()
-        assert state['statistics']['incidents'] == 1
-        notification_id = state['notifications'][0]['id']
-        assert client.patch('/api/notifications/' + notification_id, json={'read': True}).status_code == 200
-        assert client.patch('/api/incidents/' + str(item['incident_id']), json={'status': 'Resolved'}).status_code == 200
-        state = client.get('/api/state').json()
-        assert state['notifications'][0]['read'] is True
-        assert state['items'][0]['status'] == 'Resolved'
+        response = client.get("/api/state")
+        assert response.status_code == 200
+
+        state = response.json()
+        assert state["statistics"]["incidents"] == 1
+
+        notification_id = state["notifications"][0]["id"]
+
+        response = client.patch(
+            "/api/notifications/" + notification_id,
+            json={"read": True},
+        )
+        assert response.status_code == 200
+
+        # Confirm the read action works before resolving.
+        state = client.get("/api/state").json()
+        assert state["notifications"][0]["read"] is True
+
+        response = client.patch(
+            "/api/incidents/" + str(item["incident_id"]),
+            json={"status": "Resolved"},
+        )
+        assert response.status_code == 200
+
+        # Resolution now removes the notification.
+        state = client.get("/api/state").json()
+        assert state["notifications"] == []
+        assert state["items"][0]["status"] == "Resolved"
+
 
 
 def test_api_image_inference_mocked_no_real_ollama(monkeypatch, store):

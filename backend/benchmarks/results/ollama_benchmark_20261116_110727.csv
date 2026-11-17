@@ -1,0 +1,5 @@
+phase,parallel,request,success,latency_s,ollama_total_s,load_s,prompt_tokens,output_tokens,output_tokens_per_s,error
+warmup,1,0,True,32.263,32.0613,19.8206,628,772,71.99,
+1 concurrent / run 1,1,0,True,11.747,11.0441,0.0265,628,772,72.23,
+1 concurrent / run 2,1,0,True,11.576,10.9719,0.029,628,772,72.01,
+1 concurrent / run 3,1,0,True,11.847,11.0046,0.1082,628,772,72.11,

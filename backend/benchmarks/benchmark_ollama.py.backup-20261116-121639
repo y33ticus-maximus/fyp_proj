@@ -1,0 +1,303 @@
+
+import argparse
+import ast
+import base64
+import csv
+import json
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from io import BytesIO
+from math import ceil
+from pathlib import Path
+from statistics import median
+from threading import Barrier
+from time import perf_counter
+
+import httpx
+from PIL import Image, ImageOps
+
+
+BACKEND = Path(__file__).resolve().parents[1]
+RESULTS = Path(__file__).resolve().parent / "results"
+
+
+def load_prompt():
+    # Read the real application prompt without importing main.py
+    # or initializing its production database.
+    tree = ast.parse(
+        (BACKEND / "main.py").read_text(encoding="utf-8-sig")
+    )
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            if any(
+                isinstance(t, ast.Name) and t.id == "PROMPT"
+                for t in node.targets
+            ):
+                value = ast.literal_eval(node.value)
+                if isinstance(value, str):
+                    return value
+    raise RuntimeError("Could not locate PROMPT in main.py")
+
+
+def prepare_image(path):
+    with Image.open(path) as raw:
+        image = ImageOps.exif_transpose(raw).convert("RGB")
+        image.thumbnail((1600, 1600))
+        output = BytesIO()
+        image.save(
+            output, format="JPEG", quality=88, optimize=True
+        )
+        return base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def ns_to_seconds(value):
+    if not isinstance(value, (int, float)):
+        return None
+    return round(value / 1_000_000_000, 4)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--image", required=True)
+    parser.add_argument(
+        "--model", default="openbmb/minicpm-v4.7:1b"
+    )
+    parser.add_argument(
+        "--url", default="http://127.0.0.1:11434"
+    )
+    parser.add_argument(
+        "--levels", nargs="+", type=int, default=[1, 2, 4]
+    )
+    parser.add_argument("--repeats", type=int, default=1)
+    parser.add_argument("--timeout", type=float, default=240)
+    parser.add_argument(
+        "--no-warmup", action="store_true"
+    )
+    args = parser.parse_args()
+
+    if (
+        any(n not in (1, 2, 4) for n in args.levels)
+        or not 1 <= args.repeats <= 5
+        or args.timeout <= 0
+    ):
+        parser.error("Levels must be 1, 2 or 4; repeats 1-5.")
+
+    image_path = Path(args.image.strip('"'))
+    if not image_path.is_file():
+        parser.error("Image file does not exist.")
+
+    url = args.url.rstrip("/")
+    prompt = load_prompt()
+    encoded_image = prepare_image(image_path)
+
+    # Verify Ollama and the selected model before benchmarking.
+    try:
+        with httpx.Client(
+            timeout=10, trust_env=False
+        ) as client:
+            response = client.get(url + "/api/tags")
+            response.raise_for_status()
+            available = [
+                m.get("name")
+                for m in response.json().get("models", [])
+            ]
+    except Exception as error:
+        parser.error(
+            "Ollama is unreachable at " + url + ": " + str(error)
+        )
+
+    if args.model not in available:
+        parser.error(
+            "Model not found: " + args.model
+            + "\nAvailable models: " + ", ".join(available)
+        )
+
+    payload = {
+        "model": args.model,
+        "messages": [{
+            "role": "user",
+            "content": prompt,
+            "images": [encoded_image],
+        }],
+        "stream": False,
+        "format": "json",
+        "options": {"temperature": 0},
+    }
+
+    rows = []
+
+    def request_one(phase, parallel, index, gate=None):
+        record = {
+            "phase": phase,
+            "parallel": parallel,
+            "request": index,
+            "success": False,
+            "latency_s": None,
+            "ollama_total_s": None,
+            "load_s": None,
+            "prompt_tokens": None,
+            "output_tokens": None,
+            "output_tokens_per_s": None,
+            "error": "",
+        }
+
+        try:
+            if gate is not None:
+                gate.wait(timeout=20)
+
+            started = perf_counter()
+
+            with httpx.Client(
+                timeout=httpx.Timeout(
+                    args.timeout, connect=10.0
+                ),
+                trust_env=False,
+            ) as client:
+                response = client.post(
+                    url + "/api/chat", json=payload
+                )
+                response.raise_for_status()
+                body = response.json()
+
+            record["latency_s"] = round(
+                perf_counter() - started, 3
+            )
+
+            content = body.get("message", {}).get(
+                "content", ""
+            )
+
+            # Verify that the result contains a usable
+            # PPE classification, not just a successful HTTP reply.
+            prediction = json.loads(content)
+            required = (
+                "worker_count",
+                "helmet_violation",
+                "vest_violation",
+                "boots_violation",
+            )
+            if not isinstance(prediction, dict) or any(
+                key not in prediction for key in required
+            ):
+                raise ValueError(
+                    "Response missing PPE classification fields"
+                )
+
+            record["success"] = True
+            record["ollama_total_s"] = ns_to_seconds(
+                body.get("total_duration")
+            )
+            record["load_s"] = ns_to_seconds(
+                body.get("load_duration")
+            )
+            record["prompt_tokens"] = body.get(
+                "prompt_eval_count"
+            )
+            record["output_tokens"] = body.get(
+                "eval_count"
+            )
+
+            eval_duration = body.get("eval_duration")
+            eval_count = body.get("eval_count")
+
+            if eval_duration and eval_count is not None:
+                record["output_tokens_per_s"] = round(
+                    eval_count * 1_000_000_000 / eval_duration,
+                    2,
+                )
+
+        except Exception as error:
+            if record["latency_s"] is None:
+                record["latency_s"] = round(
+                    perf_counter() - started, 3
+                ) if "started" in locals() else None
+
+            record["error"] = (
+                type(error).__name__ + ": " + str(error)
+            )[:250]
+
+        return record
+
+    def run_group(n, phase):
+        gate = Barrier(n) if n > 1 else None
+        wall_start = perf_counter()
+
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            futures = [
+                pool.submit(request_one, phase, n, i, gate)
+                for i in range(n)
+            ]
+            batch = [f.result() for f in futures]
+
+        wall_time = perf_counter() - wall_start
+        rows.extend(batch)
+
+        durations = sorted(
+            r["latency_s"]
+            for r in batch
+            if r["latency_s"] is not None
+        )
+        successes = sum(r["success"] for r in batch)
+
+        print("\n" + phase)
+        print(f"  Successful: {successes}/{n}")
+        print(f"  Batch wall time: {wall_time:.2f}s")
+
+        if durations:
+            p95 = durations[ceil(
+                len(durations) * 0.95
+            ) - 1]
+            print(f"  Median latency: {median(durations):.2f}s")
+            print(f"  P95 latency: {p95:.2f}s")
+
+        print(f"  Throughput: {n / wall_time:.3f} req/s")
+
+        for r in batch:
+            if r["error"]:
+                print("  ERROR:", r["error"])
+
+    print("\nREAL OLLAMA PPE BENCHMARK")
+    print("Model:", args.model)
+    print("Server:", url)
+    print("Image:", image_path.name)
+    print("Prompt: existing backend/main.py PROMPT")
+    print("No FastAPI or production SQLite writes.\n")
+
+    if not args.no_warmup:
+        print("Warm-up request (excluded from batch metrics)")
+        warmup = request_one("warmup", 1, 0)
+        rows.append(warmup)
+        print("  Latency:", warmup["latency_s"], "seconds")
+        print("  Model loading:", warmup["load_s"], "seconds")
+        if not warmup["success"]:
+            print("  FAILED:", warmup["error"])
+            return 1
+
+    for n in args.levels:
+        for repeat in range(1, args.repeats + 1):
+            run_group(n, f"{n} concurrent / run {repeat}")
+
+    RESULTS.mkdir(parents=True, exist_ok=True)
+    filename = (
+        "ollama_benchmark_"
+        + datetime.now().strftime("%Y%m%d_%H%M%S")
+        + ".csv"
+    )
+    output = RESULTS / filename
+
+    with output.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f, fieldnames=list(rows[0].keys())
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print("\nResults saved:", output)
+    print("Measured requests exclude the warm-up.")
+    print("Actual inference, not a mocked response.")
+
+    return 0 if all(r["success"] for r in rows) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

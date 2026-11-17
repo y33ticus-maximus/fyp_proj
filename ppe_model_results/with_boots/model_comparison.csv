@@ -1,0 +1,5 @@
+﻿model,scope,images_analyzed,valid_responses,error_predictions,unclear_predictions,scored_decisive,coverage,avg_seconds,total_request_seconds,ground_truth_binary,unclear_or_error_on_binary,tp,tn,fp,fn,accuracy,precision,recall,f1,false_positive_rate,strict_accuracy,actionable_recall
+qwen3.8:27b,overall,5,5,0,2,3,0.6,39.378,196.889,5,2,3,0,0,0,1.0,1.0,1.0,1.0,,0.6,0.6
+qwen3.8:27b,helmet,5,5,0,0,5,1.0,39.378,196.889,5,0,3,0,0,2,0.6,1.0,0.6,0.75,,0.6,0.6
+qwen3.8:27b,vest,5,5,0,0,5,1.0,39.378,196.889,5,0,1,2,0,2,0.6,1.0,0.3333333333333333,0.5,0.0,0.6,0.3333333333333333
+qwen3.8:27b,boots,5,4,0,4,0,0.0,39.378,196.889,4,4,0,0,0,0,,,,,,0.0,0.0

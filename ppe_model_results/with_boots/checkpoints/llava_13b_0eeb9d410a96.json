@@ -1,0 +1,10 @@
+{
+  "model_id": "llava:13b",
+  "dataset": "with_boots",
+  "thinking_mode": "default",
+  "num_predict": 2048,
+  "temperature": 0,
+  "timeout_seconds": 300,
+  "prompt_sha": "47e670dae8ae",
+  "ground_truth_sha": "6c95b433e003"
+}

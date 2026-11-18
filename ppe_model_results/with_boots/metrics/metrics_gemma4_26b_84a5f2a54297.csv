@@ -1,0 +1,5 @@
+﻿scope,ground_truth_binary,valid_responses,error_predictions,unclear_predictions,scored_decisive,unclear_or_error_on_binary,tp,tn,fp,fn,accuracy,precision,recall,f1,false_positive_rate,coverage,strict_accuracy,actionable_recall
+overall,43,37,6,25,12,31,12,0,0,0,1.0,1.0,1.0,1.0,,0.27906976744186046,0.27906976744186046,0.6
+helmet,47,40,7,0,40,7,10,27,0,3,0.925,1.0,0.7692307692307693,0.8695652173913043,0.0,0.851063829787234,0.7872340425531915,0.625
+vest,47,40,7,0,40,7,3,36,0,1,0.975,1.0,0.75,0.8571428571428571,0.0,0.851063829787234,0.8297872340425532,0.42857142857142855
+boots,41,35,6,35,0,41,0,0,0,0,,,,,,0.0,0.0,0.0

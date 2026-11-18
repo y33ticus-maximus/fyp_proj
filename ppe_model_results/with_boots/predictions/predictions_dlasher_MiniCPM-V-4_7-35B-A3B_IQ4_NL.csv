@@ -1,0 +1,72 @@
+﻿image,source_image,model,ground_truth,predicted,truth_helmet,pred_helmet,truth_vest,pred_vest,pred_boots,truth_boots,pred_worker_count,seconds,error,raw_response
+ppewithboots__image_260_jpg.rf.2b6d02d19abea9f36b5ccd45f747a10a.jpg,ppewithboots/valid/images/image_260_jpg.rf.2b6d02d19abea9f36b5ccd45f747a10a.jpg,dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,violation,violation,yes,yes,no,no,unclear,unclear,1,165.809,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppewithboots__KakaoTalk_20221018_001605157_29_jpg.rf.1253c83f21adadadd7bac85f8ca5b505.jpg,ppewithboots/valid/images/KakaoTalk_20221018_001605157_29_jpg.rf.1253c83f21adadadd7bac85f8ca5b505.jpg,dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,violation,unclear,yes,no,yes,no,unclear,yes,1,9.549,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppewithboots__image_226_jpg.rf.23e42c7e9ad3d01a43479e53cbb41d39.jpg,ppewithboots/valid/images/image_226_jpg.rf.23e42c7e9ad3d01a43479e53cbb41d39.jpg,dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,violation,violation,yes,yes,no,no,unclear,yes,1,6.178,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""missing"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppewithboots__KakaoTalk_20221018_001219713_24_jpg.rf.773ae4987571777cc0a57314e94fcf9b.jpg,ppewithboots/valid/images/KakaoTalk_20221018_001219713_24_jpg.rf.773ae4987571777cc0a57314e94fcf9b.jpg,dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,violation,unclear,yes,no,yes,no,unclear,yes,1,5.904,,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppewithboots__image_195_jpg.rf.9cc1131c4b0b020c233196b065cd880a.jpg,ppewithboots/valid/images/image_195_jpg.rf.9cc1131c4b0b020c233196b065cd880a.jpg,dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,violation,violation,yes,yes,yes,yes,unclear,yes,2,6.077,,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"

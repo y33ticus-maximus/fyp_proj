@@ -1,0 +1,687 @@
+﻿image,source_image,model,model_id,thinking_mode,num_predict,prompt_sha,ground_truth,predicted,truth_helmet,pred_helmet,truth_vest,pred_vest,truth_boots,pred_boots,pred_worker_count,seconds,eval_count,thinking_characters,done_reason,attempts,previous_errors,error,raw_response
+000005_jpg.rf.c613c066b79795d219855aca269760e6.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,2,28.132,449,1235,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+006672_jpg.rf.657b0a9ecd720d07ca5dd75338a058d5.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,6,7.91,800,2186,stop,1,[],,"{
+  ""worker_count"": 6,
+  ""workers"": [
+    {""position"": ""leftmost"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""front left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right of center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""rightmost"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+002551_jpg.rf.b09484b130c1587abfa8365c3d774bf1.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,3,9.772,1027,3617,stop,1,[],,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""background"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_5846_jpg.rf.f82d7ebbe6b6c050cacb8a7e0ff64424.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,18,10.539,890,2982,stop,1,[],,"{
+  ""worker_count"": 18,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible but not certified""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible but not certified""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+003357_jpg.rf.9fb1f2cebc239b4276a81ce2cbf9e911.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,1,4.017,359,1069,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+image_53_jpg.rf.126c05efe93729b667ca2860e6fd0ac3.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.425,448,1281,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+004063_jpg.rf.6ecc587c20a87ec176841aea39b8f5db.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,error,yes,error,yes,error,,error,,18.338,2048,7725,length,1,[],Output token limit reached,
+image_55_jpg.rf.51b5b121599680f79fff1ad2d6aefba0.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.429,437,1306,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+004763_jpg.rf.c8f1bd1cb7cf6037f7c90a6c213d6364.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,3,5.758,568,1687,stop,1,[],,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""middle"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_1073_jpg.rf.92536fa1d42874966bc7622b6f87290a.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,8,12.462,978,2704,stop,1,[],,"{
+  ""worker_count"": 8,
+  ""workers"": [
+    {""position"": ""leftmost"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
+    {""position"": ""second from left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
+    {""position"": ""front left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""front right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""middle background"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
+    {""position"": ""middle right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
+    {""position"": ""right side (orange jacket)"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""},
+    {""position"": ""right side (green vest)"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-114_jpg.rf.eb3011bd70cacf2dc16e547a76bf46af.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,unclear,yes,yes,yes,,unclear,1,10.126,862,3060,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-108_jpg.rf.fab5c53071f6136e964450b66c7af12a.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,2,7.776,581,1869,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-263_jpg.rf.f567aa6c1de28e9eb92812ea9acc62af.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,1,6.018,378,1119,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-462_jpg.rf.8d7dde79174010662d8cb3dca5719661.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,2,16.582,1623,6137,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""visible""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0018_jpg.rf.7b9c376ffd49f5537eb4a7fed3e4d3b1.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,2,6.086,455,1245,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-631_jpg.rf.039b87797727e45047956dd063733e38.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,9.214,754,2317,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+Image36_jpg.rf.137e9f15ce037d4f965dd8b538091cd5.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,error,no,error,yes,error,,error,,18.189,2048,8229,length,1,[],Output token limit reached,
+youtube-738_jpg.rf.c0904dbc97a5d4bd3d8eeffb1879270b.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.755,348,1007,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+006463_jpg.rf.f134bfc3f96f0e501a027414ffffcc82.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,no,no,yes,yes,,unclear,8,14.763,1636,5091,stop,1,[],,"{
+  ""worker_count"": 8,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""second from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""third from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""fourth from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""fifth from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""sixth from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""seventh from left"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""rightmost"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-840_jpg.rf.64ef53bced9bacdd492e0cbc19687e9e.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.545,441,1401,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+2008_008519_jpg.rf.25dde55db22f63ad185c58fef6f41669.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,no,no,yes,no,,unclear,2,18.071,2021,7621,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right of left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0064_jpg.rf.f79f47e7b85011b7692cf52369b99b6c.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.786,424,1306,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-186_jpg.rf.a7c82770148c2886fb42a72693784687.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,no,no,unclear,,unclear,2,14.152,1332,4706,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""unclear"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_1228_jpg.rf.1a66d246c97f20a0810cc409ff85141a.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.161,387,1172,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+2008_008320_jpg.rf.a1f52d3537abe3e294e37dd0476e3213.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,yes,,unclear,2,10.54,1137,4162,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""background"",
+      ""helmet"": ""unclear"",
+      ""vest"": ""unclear"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-179_jpg.rf.daae2adf8a9bb7586f8a3662850efa87.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.251,403,1104,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-263_jpg.rf.cf6bd3891e28a9e88ca1f4e91f4379a0.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,no,no,,unclear,1,10.89,846,2973,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""right"", ""helmet"": ""unclear"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-200_jpg.rf.2e18ca9e847a8153b4fb619a6dfb83de.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.999,360,1065,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+RPReplay_Final1667001201_MP4-100_jpg.rf.fdb27274140f19750e4dc2b4afb5b639.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,yes,,unclear,1,8.757,772,2737,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-287_jpg.rf.586807564387d84ca3261cb587f0aa6e.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,7.392,529,1669,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center-right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_3100_mp4-12_jpg.rf.f5426fa2b87a0cdfb03f2a6aff0f44f4.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,8.961,609,2516,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-391_jpg.rf.941d2a1277953dea6f593a6f4a790a1f.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.634,446,1299,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_3100_mp4-9_jpg.rf.d54541c51751c2cb0338583189e24839.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,no,yes,no,,unclear,0,8.006,509,1999,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-455_jpg.rf.b4a2bbd54738aa12b746d9934005477b.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,2,7.942,588,1826,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_0871_MOV-12_jpg.rf.5bf840ad63e4e8a855d568b0466886d9.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,7.614,467,1844,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-504_jpg.rf.f9a147e51e9c8da3cf7a2f6192350774.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,9.203,745,2345,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_0871_mp4-11_jpg.rf.077108e2788da772f239603052c49ee1.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,6.607,347,1308,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-584_jpg.rf.f95e03ef7339db11bb74bcfd352d2a38.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.174,398,1278,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_0871_mp4-23_jpg.rf.29e223be9ce24464a75d15cf808ed496.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,7.268,429,1587,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-617_jpg.rf.0f5ea7ba0ae177b6428e831987a50f8b.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,2,6.526,432,1216,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+IMG_3103_mp4-9_jpg.rf.2214fc01d9fda8c5aee91f19700d8a15.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,8.05,512,2071,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-697_jpg.rf.6f131cdcfc4849be0f93b59e4c0678c1.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.789,466,1479,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+maksssksksss17_png_jpg.rf.92a0c41078e0ebbbc5210f350413156a.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,6.335,629,2377,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-836_jpg.rf.c95929820a1458bb5693dfdff28d47ca.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.936,482,1359,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+Movie-on-10-31-22-at-10_08-AM_mov-24_jpg.rf.95ec6998880e7bb081f76b11a5e978e9.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,7.543,449,1757,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-131_jpg.rf.5163b246b1fc080d43946cacf8ccfac1.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.487,431,1397,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+Movie-on-10-31-22-at-10_08-AM_mov-20_jpg.rf.4268dff063e46f99b21f374eeec482ea.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,unclear,yes,unclear,,unclear,0,9.496,696,2825,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+006118_jpg.rf.07a45c83f80fef659eb79d408e6fb3ec.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.743,554,1806,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+youtube-192_jpg.rf.f2fc6cb4eb904216075118db4b2da10a.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,no,,unclear,1,5.44,311,889,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""missing"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+-2544-_png_jpg.rf.bbd424c2b9470ff20ff625ce05001689.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,5.854,565,1745,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {
+      ""position"": ""center"",
+      ""helmet"": ""worn"",
+      ""vest"": ""worn"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+2009_000059_jpg.rf.fdadf92b3365ec373f467210a8e174d5.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,unclear,no,unclear,,unclear,0,10.486,1117,4518,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""unclear"",
+  ""vest_violation"": ""unclear"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0029_jpg.rf.cdfd7d2e151bd71e736a4fbe555fa4e2.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,4.452,338,984,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+class2_145_jpg.rf.0b9591cc733f21d8544822f33b755a4b.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,yes,,unclear,2,9.049,632,2002,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0985_jpg.rf.6bb3fa31d2726b7992bd6f8e0af9e935.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,3,7.879,439,1222,stop,1,[],,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""middle"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+class1_150_jpg.rf.a3502c0a13f5c127ed58b8a0beb8db7e.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,yes,,unclear,2,8.569,547,1594,stop,1,[],,"{
+  ""worker_count"": 2,
+  ""workers"": [
+    {
+      ""position"": ""left"",
+      ""helmet"": ""worn"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    },
+    {
+      ""position"": ""right"",
+      ""helmet"": ""missing"",
+      ""vest"": ""missing"",
+      ""boots"": ""unclear""
+    }
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+ppe_0738_jpg.rf.631d61e347713b921f68ac21ad3d2f33.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,6.263,474,1510,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+thumbnail-ba5c72edb320b49a69e86b05775c49b2-scaled-1_jpeg_jpg.rf.edefd0830c6b64605136df7a135fdc4f.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,unclear,yes,no,yes,no,,unclear,0,8.9,763,3085,stop,1,[],,"{
+  ""worker_count"": 0,
+  ""workers"": [],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+front_crawling_00088_jpg.rf.d93d63421ccfffe877dea9dfb0858884.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,1,3.812,338,973,stop,1,[],,"{
+  ""worker_count"": 1,
+  ""workers"": [
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"
+NX_img_177_jpg.rf.96ecd1df106d0d0386ff1f8f03877833.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,violation,violation,yes,yes,yes,yes,,unclear,3,15.449,1488,5359,stop,1,[],,"{
+  ""worker_count"": 3,
+  ""workers"": [
+    {""position"": ""left (top)"", ""helmet"": ""worn"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""front-left"", ""helmet"": ""missing"", ""vest"": ""missing"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""unclear"", ""vest"": ""unclear"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""yes"",
+  ""vest_violation"": ""yes"",
+  ""boots_violation"": ""unclear""
+}"
+image_829_jpg.rf.13158540efc2077461fc0135e9bbdf2c.jpg,,"dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL [think=default, max=2048, prompt=47e670]",dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL,default,2048,47e670dae8ae,compliant,unclear,no,no,no,no,,unclear,6,14.278,1501,5122,stop,1,[],,"{
+  ""worker_count"": 6,
+  ""workers"": [
+    {""position"": ""left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center-left"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""center-right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""},
+    {""position"": ""background-right"", ""helmet"": ""worn"", ""vest"": ""worn"", ""boots"": ""unclear""}
+  ],
+  ""helmet_violation"": ""no"",
+  ""vest_violation"": ""no"",
+  ""boots_violation"": ""unclear""
+}"

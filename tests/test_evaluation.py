@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
-from evaluation import DATASETS, evidence_rows, ground_truth, metrics, model_runs, reviewed_images
+from evaluation import DATASETS, evidence_rows, ground_truth, metrics, model_runs, reviewed_images, run_diagnostics
 
 class EvaluationTests(unittest.TestCase):
     @classmethod
@@ -41,6 +41,33 @@ class EvaluationTests(unittest.TestCase):
         from collections import Counter
         counts=Counter(r['verified_boots'] for r in self.labels2)
         self.assertEqual((counts['yes'],counts['no'],counts['unclear']),(26,34,8))
+
+    def test_incomplete_perfect_f1_is_not_complete_coverage(self):
+        runs,_=model_runs(self.d2)
+        report=run_diagnostics(self.labels2,runs['gemma4:26b'],'overall',DATASETS['v2_boots']['items'])
+        self.assertEqual((report['total'],report['saved'],report['missing']), (68,5,63))
+        self.assertEqual(report['decisive_responses'],2)
+        self.assertEqual(report['metrics']['f1'],1.0)
+        self.assertLess(report['decisive_coverage'],0.1)
+
+    def test_saved_row_does_not_mean_successful_response(self):
+        name='dlasher/MiniCPM-V-4.7-35B-A3B:IQ4_NL'
+        report=run_diagnostics(self.labels1,self.runs[name],'overall',DATASETS['v1_helmet_vest']['items'])
+        self.assertEqual((report['saved'], report['error_responses']), (60,60))
+        self.assertEqual(report['decisive_responses'],0)
+        self.assertEqual(report['decisive_coverage'],0.0)
+
+    def test_diagnostics_ignore_extra_images_and_invalid_timing(self):
+        labels=[{'image':'a.jpg','verified_helmet':'yes'},
+                {'image':'b.jpg','verified_helmet':'no'},
+                {'image':'c.jpg','verified_helmet':'yes'}]
+        run={'a.jpg':{'predicted':'violation','seconds':'nan'},
+             'b.jpg':{'predicted':'error','seconds':'-12'},
+             'extra.jpg':{'predicted':'compliant','seconds':'20'}}
+        report=run_diagnostics(labels,run,'overall',('helmet',))
+        self.assertEqual((report['saved'],report['missing'],report['extra_rows']), (2,1,1))
+        self.assertEqual((report['decisive_responses'],report['error_responses']), (1,1))
+        self.assertIsNone(report['avg_seconds'])
 
     def test_all_saved_scopes_match_notebook(self):
         import csv

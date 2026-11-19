@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -175,3 +176,61 @@ def metrics(rows: list[dict]) -> dict:
 def full_image_rows(labels: list[dict], run: dict[str, dict], scope: str,
                     items: tuple[str, ...]) -> list[dict]:
     return evidence_rows(labels, run, scope, items, include_unattempted=True)
+
+
+def run_diagnostics(labels: list[dict], run: dict[str, dict], scope: str,
+                    items: tuple[str, ...]) -> dict:
+    """Distinguish saved rows, usable responses and scorable classifications.
+
+    A CSV row proves only that a result was saved. It does not imply a valid,
+    decisive response. Accuracy/F1 use *only* decisive binary-ground-truth
+    cases; expose the denominator so tiny samples never appear complete.
+    """
+    benchmark_names = {Path(label["image"]).name for label in labels}
+    saved = 0
+    responses = Counter()
+    timing = []
+    positive, negative = (("violation", "compliant") if scope == "overall"
+                          else ("yes", "no"))
+    for label in labels:
+        row = run.get(Path(label["image"]).name)
+        if row is None:
+            responses["missing"] += 1
+            continue
+        saved += 1
+        value = prediction(row, scope, items)
+        if value in (positive, negative):
+            responses["decisive"] += 1
+        elif value == "unclear":
+            responses["unclear"] += 1
+        else:
+            responses["error"] += 1
+        try:
+            seconds = float(row.get("seconds") or "")
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(seconds) and seconds > 0:
+            timing.append(seconds)
+
+    results = metrics(full_image_rows(labels, run, scope, items))
+    total = len(labels)
+    binary_count = sum(
+        ground_truth(label, scope, items) in (positive, negative)
+        for label in labels
+    )
+    return {
+        "total": total,
+        "saved": saved,
+        "missing": responses["missing"],
+        "decisive_responses": responses["decisive"],
+        "unclear_responses": responses["unclear"],
+        "error_responses": responses["error"],
+        "extra_rows": len(set(run) - benchmark_names),
+        "saved_fraction": saved / total if total else None,
+        "response_fraction": (responses["decisive"] + responses["unclear"]) / saved if saved else None,
+        "binary_truth_count": binary_count,
+        "decisive_coverage": results["coverage"],
+        "timed_count": len(timing),
+        "avg_seconds": sum(timing) / len(timing) if timing else None,
+        "metrics": results,
+    }

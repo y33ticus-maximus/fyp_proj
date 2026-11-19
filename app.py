@@ -16,7 +16,7 @@ from PIL import Image, ImageOps
 
 from evaluation import (
     DATASETS, SCOPES, evidence_rows, full_image_rows, ground_truth, metrics,
-    model_runs, outcome, prediction, read_csv, reviewed_images,
+    model_runs, outcome, prediction, read_csv, reviewed_images, run_diagnostics,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -526,6 +526,255 @@ def ground_truth_gallery(dataset_dir,labels,items):
         st.caption("Label convention: yes = violation; no = no visible violation; unclear = cannot reliably determine.")
 
 
+def insight_reports(labels, runs, scope, items):
+    return {model: run_diagnostics(labels, run, scope, items)
+            for model, run in runs.items()}
+
+
+def ranking_eligible(report, minimum_coverage):
+    return (report["decisive_coverage"] is not None
+            and report["decisive_coverage"] >= minimum_coverage
+            and report["metrics"]["decisive"] >= 10)
+
+
+def model_rankings(reports, dataset_key, scope):
+    st.subheader("🏆 Model rankings")
+    st.caption("Compare only runs from this benchmark and PPE scope. Rankings use "
+               "decisive predictions with binary ground truth, not every saved CSV row.")
+    threshold = st.slider(
+        "Minimum decisive coverage for an eligible ranking (%)", 0, 100, 80, 5,
+        key=f"insight_threshold_{dataset_key}_{scope}",
+        help="At least 10 scorable decisive predictions are also required. "
+             "Low-coverage results remain visible as provisional.",
+    ) / 100
+    eligible = {name: report for name, report in reports.items()
+                if ranking_eligible(report, threshold)}
+    st.caption(f"{len(eligible)} of {len(reports)} models meet the current requirements: "
+               f"at least {threshold:.0%} decisive coverage and 10 decisive scored images.")
+
+    leader_specs = [
+        ("🏆 Highest F1-score", "f1", False),
+        ("🛡️ Highest recall", "recall", False),
+        ("🎯 Highest precision", "precision", False),
+        ("⚡ Fastest inference", "avg_seconds", True),
+        ("✅ Highest decisive coverage", "decisive_coverage", False),
+    ]
+    for start in (0, 3):
+        row = leader_specs[start:start + 3]
+        for col, (title, metric_key, lower_is_better) in zip(st.columns(len(row)), row):
+            with col:
+                with st.container(border=True):
+                    st.markdown(f"**{title}**")
+                    candidates = reports if metric_key == "decisive_coverage" else eligible
+                    if metric_key == "avg_seconds":
+                        candidates = {n:r for n,r in candidates.items()
+                                      if r["avg_seconds"] is not None
+                                      and r["timed_count"] >= max(1, .8 * r["saved"])}
+                    key_fn = (lambda r: r["decisive_coverage"] if metric_key == "decisive_coverage"
+                              else r["avg_seconds"] if metric_key == "avg_seconds"
+                              else r["metrics"].get(metric_key))
+                    available = [(n,r,key_fn(r)) for n,r in candidates.items()
+                                 if key_fn(r) is not None]
+                    if not available:
+                        st.metric("Result", "Not available")
+                        st.caption("No model currently qualifies.")
+                    else:
+                        # Prefer better coverage and more evaluated images on ties.
+                        best = sorted(available, key=lambda x: (
+                            x[2] if lower_is_better else -x[2],
+                            -x[1]["decisive_coverage"], -x[1]["saved"], x[0],
+                        ))[0]
+                        st.metric("Best value", seconds_fmt(best[2]) if lower_is_better
+                                  else pct(best[2]))
+                        st.markdown(best[0])
+                        if not ranking_eligible(best[1], threshold):
+                            st.caption("⚠️ Provisional: below ranking requirement")
+
+    table = []
+    for name, r in reports.items():
+        m = r["metrics"]
+        as_percent = lambda value: None if value is None else value * 100
+        table.append({
+            "Model": name,
+            "Status": "Eligible" if ranking_eligible(r, threshold) else "Provisional",
+            "F1 (%)": as_percent(m["f1"]), "Recall (%)": as_percent(m["recall"]),
+            "Precision (%)": as_percent(m["precision"]),
+            "Accuracy (%)": as_percent(m["accuracy"]),
+            "Decisive coverage (%)": as_percent(r["decisive_coverage"]),
+            "Scored decisions": m["decisive"],
+            "Saved images": f"{r['saved']} / {r['total']}",
+            "Avg. seconds": r["avg_seconds"],
+        })
+    ranked = pd.DataFrame(table)
+    ranked["_eligible"] = (ranked["Status"] == "Eligible").astype(int)
+    ranked = ranked.sort_values(["_eligible", "F1 (%)", "Decisive coverage (%)"],
+                                ascending=[False, False, False], na_position="last")
+    ranked = ranked.drop(columns="_eligible")
+    st.dataframe(ranked, hide_index=True, use_container_width=True,
+                 column_config={
+                     col: st.column_config.NumberColumn(format="%.1f%%")
+                     for col in ("F1 (%)", "Recall (%)", "Precision (%)",
+                                 "Accuracy (%)", "Decisive coverage (%)")
+                 })
+    st.caption("A 100% score "
+               "based on just a few decisive predictions remains provisional.")
+
+
+def model_completeness(reports, labels):
+    st.subheader("✅ Evaluation progress & completeness")
+    st.caption("This shows how complete the *saved CSV results* are; it cannot track a "
+               "notebook still running unless it writes intermediate predictions.")
+    cols=st.columns(3)
+    cols[0].metric("Verified benchmark images", len(labels))
+    cols[1].metric("Model runs with saved CSVs", len(reports))
+    cols[2].metric("Runs with all images saved", sum(r["missing"]==0 for r in reports.values()))
+    for name, r in reports.items():
+        with st.container(border=True):
+            name_col, status_col = st.columns([3, 1])
+            with name_col:
+                st.markdown(f"**{name}**")
+            with status_col:
+                st.markdown("✅ All rows saved" if not r["missing"] else "⏳ Partial saved results")
+            st.progress(r["saved_fraction"] or 0, text=f"{r['saved']} / {r['total']} images with saved rows")
+            counts=st.columns(5)
+            for col, label, value in zip(counts,
+                    ("Missing", "Decisive responses", "Unclear responses", "Errors", "Scored coverage"),
+                    (r["missing"], r["decisive_responses"], r["unclear_responses"],
+                     r["error_responses"], pct(r["decisive_coverage"]))):
+                col.metric(label, value)
+            if r["extra_rows"]:
+                st.warning(f"{r['extra_rows']} CSV image(s) are not part of this verified benchmark.")
+    st.info("Saved rows, usable responses, and decisive coverage measure different things. "
+            "An 'unclear' response counts as a saved response, but not a decisive classification. "
+            "For scored coverage, only images with decisive model outputs AND binary ground truth count.")
+
+
+def failure_kind(record):
+    if record["prediction"] == "missing":
+        return "No prediction"
+    if record["prediction"] == "error":
+        return "Error"
+    if record["prediction"] == "unclear":
+        return "Unclear"
+    return record["outcome"] if record["outcome"] in {"FN", "FP"} else None
+
+
+def model_failure_analysis(dataset_dir, labels, runs, items, scope):
+    st.subheader("🔎 Failure analysis")
+    model=st.selectbox("Inspect model failures", list(runs), key=f"insight_failure_model_{dataset_dir.name}")
+    model_readout("Full model name", model)
+    rows=full_image_rows(labels, runs[model], scope, items)
+    category_names={
+        "FN":"False negatives · missed violations",
+        "FP":"False positives · false alerts",
+        "Unclear":"Unclear responses",
+        "Error":"Processing / parsing errors",
+        "No prediction":"No saved prediction",
+    }
+    counts=Counter(failure_kind(row) for row in rows)
+    st.caption("Failure categories reflect the selected PPE category and saved predictions. "
+               "Missing predictions are separate from processing errors.")
+    for col, key in zip(st.columns(5), category_names):
+        col.metric(key, counts[key])
+
+    breakdown=[]
+    for item in items:
+        item_rows=full_image_rows(labels, runs[model], item, items)
+        item_counts=Counter(failure_kind(row) for row in item_rows)
+        breakdown.append({"PPE item":SCOPES[item], "FN":item_counts["FN"],
+                          "FP":item_counts["FP"], "Unclear":item_counts["Unclear"],
+                          "Error":item_counts["Error"], "No prediction":item_counts["No prediction"]})
+    st.markdown("**Which PPE categories are most difficult?**")
+    st.dataframe(pd.DataFrame(breakdown), hide_index=True, use_container_width=True)
+
+    options=["All issues", *category_names.values()]
+    selection=st.selectbox("Show images with", options,
+                           key=f"insight_failure_category_{dataset_dir.name}_{scope}")
+    chosen_key=next((k for k,v in category_names.items() if v==selection),None)
+    filtered=[r for r in rows if failure_kind(r) and
+              (chosen_key is None or failure_kind(r)==chosen_key)]
+    st.caption(f"{len(filtered)} images match. Click Inspect to view full evidence and navigate among these results.")
+    if not filtered:
+        st.success("No matching issues for this model and filter.")
+        return
+
+    gallery_key=f"insight_failures_{dataset_dir.name}_{model}_{scope}_{chosen_key or 'all'}"
+    page_key=f"{gallery_key}_page"
+    pages=max(1,(len(filtered)+8)//9)
+    if not 1 <= st.session_state.get(page_key,1) <= pages:
+        st.session_state[page_key]=1
+    page=st.number_input("Failure gallery page",min_value=1,max_value=pages,step=1,key=page_key)
+    visible=filtered[(page-1)*9:page*9]
+    for start in range(0,len(visible),3):
+        for col, record in zip(st.columns(3,gap="medium"), visible[start:start+3]):
+            with col:
+                with st.container(border=True):
+                    thumbnail_render(dataset_dir,record["image"])
+                    st.markdown(chip(failure_kind(record)),unsafe_allow_html=True)
+                    st.caption(record["image"][:58])
+                    if st.button("Inspect image",key=f"insight_inspect_{gallery_key}_{record['image']}",
+                                 use_container_width=True):
+                        st.session_state[gallery_key]=record["image"]
+                        inspect_image_dialog(filtered,dataset_dir,items,model,gallery_key,page_key)
+
+
+def speed_vs_performance(reports, dataset_key, scope):
+    st.subheader("⚡ Speed vs performance")
+    score_label=st.selectbox("Performance metric (vertical axis)",
+                             ["F1-score", "Recall", "Precision", "Accuracy"],
+                             key=f"insight_speed_axis_{dataset_key}_{scope}")
+    metric_key={"F1-score":"f1", "Recall":"recall", "Precision":"precision",
+                "Accuracy":"accuracy"}[score_label]
+    threshold=st.slider("Minimum decisive coverage to call a result eligible (%)",
+                        0,100,80,5,key=f"insight_speed_threshold_{dataset_key}_{scope}")/100
+    points=[]
+    for name, r in reports.items():
+        value=r["metrics"][metric_key]
+        if r["avg_seconds"] is None or value is None:
+            continue
+        points.append({
+            "Model":name,
+            "Avg. inference seconds":r["avg_seconds"],
+            f"{score_label} (%)":value*100,
+            "Classification status":"Eligible" if ranking_eligible(r,threshold) else "Provisional",
+            "Decisive coverage (%)":(r["decisive_coverage"] or 0)*100,
+            "Timing samples":r["timed_count"],
+            "Saved images":r["saved"],
+        })
+    if not points:
+        st.info("No comparable timing and classification metrics are available yet.")
+        return
+    chart_data=pd.DataFrame(points).set_index("Model")
+    st.scatter_chart(chart_data,x="Avg. inference seconds",y=f"{score_label} (%)",
+                     color="Classification status",height=440)
+    st.dataframe(chart_data.reset_index().sort_values("Avg. inference seconds"),
+                 hide_index=True,use_container_width=True)
+    st.caption("Each point is a model; lower (left) time and higher (up) performance "
+               "are preferable. Provisional runs remain visible for context. "
+               "Only positive, finite per-image timings are averaged; compare samples "
+               "and decisive coverage before drawing conclusions.")
+
+
+def model_insights(dataset_dir,labels,runs,items,scope):
+    st.markdown('<p class="mini-kicker">MODEL QUALITY & RELIABILITY</p>',unsafe_allow_html=True)
+    st.subheader("Model insights")
+    if not runs:
+        st.info("No saved model predictions are available yet. Add prediction CSVs to explore insights.")
+        return
+    sections=["🏆 Rankings", "✅ Completeness", "🔎 Failure analysis", "⚡ Speed vs performance"]
+    section=st.radio("Insights section",sections,horizontal=True,
+                     key=f"insight_section_{dataset_dir.name}")
+    reports=insight_reports(labels,runs,scope,items)
+    if section==sections[0]:
+        model_rankings(reports,dataset_dir.name,scope)
+    elif section==sections[1]:
+        model_completeness(reports,labels)
+    elif section==sections[2]:
+        model_failure_analysis(dataset_dir,labels,runs,items,scope)
+    else:
+        speed_vs_performance(reports,dataset_dir.name,scope)
+
+
 def methodology(dataset_dir,items):
     st.markdown('<p class="mini-kicker">HOW TO READ THE RESULTS</p>',unsafe_allow_html=True)
     st.subheader("Interpretation and reproducibility")
@@ -569,7 +818,7 @@ items=config["items"]
 labels=reviewed_images(dataset_dir)
 runs,warnings=model_runs(dataset_dir)
 model_list=list(runs)
-view=st.sidebar.radio("Page",["Overview","Evidence Explorer","Model vs Model","Ground-truth gallery","Methodology"],index=0)
+view=st.sidebar.radio("Page",["Overview","Model Insights","Evidence Explorer","Model vs Model","Ground-truth gallery","Methodology"],index=0)
 scope_choices=["overall",*items]
 scope=st.sidebar.selectbox("PPE category",scope_choices,format_func=lambda x:SCOPES[x])
 st.sidebar.divider()
@@ -605,6 +854,8 @@ elif view=="Evidence Explorer":
     else:
         rows=evidence_rows(labels,runs[preferred],scope,items)
         explorer(rows,dataset_dir,labels,items,preferred,scope)
+elif view=="Model Insights":
+    model_insights(dataset_dir,labels,runs,items,scope)
 elif view=="Model vs Model":
     comparison(dataset_dir,labels,runs,items,scope)
 elif view=="Ground-truth gallery":

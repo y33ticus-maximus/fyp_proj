@@ -1,0 +1,10 @@
+{
+  "model_id": "gemma4:26b",
+  "dataset": "construction_v1_60",
+  "thinking_mode": "on",
+  "num_predict": 2048,
+  "temperature": 0,
+  "timeout_seconds": 300,
+  "prompt_sha": "47e670dae8ae",
+  "ground_truth_sha": "a5b4811d266b"
+}

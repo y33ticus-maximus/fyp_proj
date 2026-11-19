@@ -1,0 +1,11 @@
+{
+  "provider": "vlmrun_chat",
+  "model_id": "vlmrun-orion-2:auto",
+  "dataset": "construction_v1_60",
+  "thinking_mode": "default",
+  "num_predict": null,
+  "temperature": 0,
+  "timeout_seconds": 300,
+  "prompt_sha": "47e670dae8ae",
+  "ground_truth_sha": "a5b4811d266b"
+}

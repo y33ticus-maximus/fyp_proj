@@ -1,0 +1,992 @@
+diff --git a/backend/main.py b/backend/main.py
+index 81575dd..35e7168 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -16,11 +16,12 @@ from urllib.parse import urlparse
+ from uuid import uuid4
+ 
+ from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+-from fastapi.responses import FileResponse
++from fastapi.responses import FileResponse, Response
+ import httpx
+ from PIL import Image, ImageOps, UnidentifiedImageError
+ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+ from storage import PPEStore
++from reporting import available_evidence_ids, recommend_summary_frames, render_summary_pdf
+ 
+ # Load the local .env file without requiring python-dotenv.
+ # Never commit this file; the remote server URL belongs in your local environment.
+@@ -402,6 +403,50 @@ def incident_frames(incident_id: int):
+     return {'analyses': STORE.incident_analyses(incident_id)}
+ 
+ 
++class SummaryReportRequest(BaseModel):
++    analysis_ids: list[int] = Field(default_factory=list, max_length=6)
++
++
++@app.get('/api/incidents/{incident_id}/report-options')
++def incident_report_options(incident_id: int):
++    if STORE.incident_for_report(incident_id) is None:
++        raise HTTPException(404, detail='Incident not found.')
++    analyses = STORE.incident_analyses(incident_id)
++    available = available_evidence_ids(analyses, EVIDENCE_DIR)
++    recommended = recommend_summary_frames(analyses, EVIDENCE_DIR)
++    return {'availableIds': available, 'recommendedIds': recommended, 'maxFrames': 6}
++
++
++@app.post('/api/incidents/{incident_id}/summary-report')
++def download_summary_report(incident_id: int, selection: SummaryReportRequest):
++    incident = STORE.incident_for_report(incident_id)
++    if incident is None:
++        raise HTTPException(404, detail='Incident not found.')
++    analyses = STORE.incident_analyses(incident_id)
++    available_ids = {row['id'] for row in analyses}
++    selected_ids = selection.analysis_ids
++    if len(selected_ids) != len(set(selected_ids)) or any(
++        analysis_id not in available_ids for analysis_id in selected_ids
++    ):
++        raise HTTPException(400, detail='Selected frames must belong to this incident and be unique.')
++    if any(analysis_id not in available_evidence_ids(analyses, EVIDENCE_DIR)
++           for analysis_id in selected_ids):
++        raise HTTPException(400, detail='One or more selected evidence files are unavailable. Refresh the report preview.')
++    review = STORE.review_history(incident_id)
++    try:
++        pdf = render_summary_pdf(incident, analyses, review, selected_ids, EVIDENCE_DIR)
++    except ImportError:
++        raise HTTPException(503, detail='PDF export requires ReportLab. Install backend requirements.') from None
++    return Response(
++        content=pdf, media_type='application/pdf',
++        headers={
++            'Content-Disposition': f'attachment; filename="PPE_Incident_{incident_id}_Summary.pdf"',
++            'Cache-Control': 'no-store',
++            'X-Content-Type-Options': 'nosniff',
++        },
++    )
++
++
+ class HumanReviewSubmission(BaseModel):
+     finding: Literal['confirmed', 'false_alert', 'inconclusive']
+     reviewer: str = Field(min_length=1, max_length=80)
+diff --git a/backend/reporting.py b/backend/reporting.py
+new file mode 100644
+index 0000000..cfd5ed7
+--- /dev/null
++++ b/backend/reporting.py
+@@ -0,0 +1,290 @@
++"""Read-only PPE summary-report selection and PDF generation.
++
++Only JPEGs previously saved by this backend can enter a report. A video's
++sampled frames are observations, never proof of unique workers or accuracy.
++"""
++
++from __future__ import annotations
++
++from datetime import datetime, timedelta, timezone
++from io import BytesIO
++from pathlib import Path
++import re
++from xml.sax.saxutils import escape
++
++from PIL import Image as PILImage
++
++SGT = timezone(timedelta(hours=8))
++EVIDENCE_PATTERN = re.compile(r'^/api/evidence/([a-f0-9]{32}\.jpg)$')
++PPE_FIELDS = ('helmet_violation', 'vest_violation', 'boots_violation')
++
++
++def saved_evidence_path(url: str | None, evidence_dir: Path) -> Path | None:
++    """Reject external URLs, untrusted paths, and old transient browser blobs."""
++    matched = EVIDENCE_PATTERN.fullmatch(url or '')
++    if not matched:
++        return None
++    path = Path(evidence_dir) / matched.group(1)
++    return path if path.is_file() else None
++
++
++def available_evidence_ids(frames: list[dict], evidence_dir: Path) -> list[int]:
++    return [int(frame['id']) for frame in frames
++            if saved_evidence_path(frame.get('evidence_url'), evidence_dir)]
++
++
++def recommend_summary_frames(frames: list[dict], evidence_dir: Path,
++                             limit: int = 6) -> list[int]:
++    """Choose varied saved evidence; prioritise definite, multi-PPE concerns.
++
++    This is deterministic selection by saved status and timestamp, not image
++    similarity detection or a claim about severity/ground-truth accuracy.
++    """
++    candidates = [f for f in frames if saved_evidence_path(f.get('evidence_url'), evidence_dir)]
++    if not candidates or limit <= 0:
++        return []
++
++    def seconds(frame):
++        value = frame.get('video_seconds')
++        return float(value) if value is not None else 0.0
++
++    def yes_items(frame):
++        return frozenset(key for key in PPE_FIELDS if frame.get(key) == 'yes')
++
++    def unclear_items(frame):
++        return frozenset(key for key in PPE_FIELDS if frame.get(key) == 'unclear')
++
++    def rank(frame):
++        yes, unclear = yes_items(frame), unclear_items(frame)
++        return (-bool(yes), -len(yes), -bool(unclear), -len(unclear), seconds(frame), frame['id'])
++
++    ranked = sorted(candidates, key=rank)
++    chosen: list[dict] = []
++    chosen_ids: set[int] = set()
++
++    def add(frame):
++        if frame is not None and frame['id'] not in chosen_ids and len(chosen) < limit:
++            chosen.append(frame)
++            chosen_ids.add(frame['id'])
++
++    # Different reported missing-PPE combinations should be represented.
++    seen_patterns: set[frozenset] = set()
++    for frame in ranked:
++        pattern = yes_items(frame)
++        if pattern and pattern not in seen_patterns:
++            add(frame)
++            seen_patterns.add(pattern)
++
++    # Include at least one visually unclear assessment when there is room.
++    add(next((f for f in ranked if unclear_items(f) and f['id'] not in chosen_ids), None))
++
++    # A compliant frame gives context, but never takes precedence over new PPE concerns.
++    if len(chosen) < limit:
++        add(next((f for f in ranked if f.get('overall_status') == 'compliant'), None))
++
++    # Fill remaining slots with spaced frames to avoid repeated adjacent samples.
++    remaining = [f for f in ranked if f['id'] not in chosen_ids]
++    while len(chosen) < limit and remaining:
++        def spacing_score(frame):
++            separation = min((abs(seconds(frame) - seconds(old)) for old in chosen),
++                             default=float('inf'))
++            return (int(bool(yes_items(frame))), len(yes_items(frame)),
++                    min(separation, 120), -seconds(frame), -int(frame['id']))
++        best = max(remaining, key=spacing_score)
++        add(best)
++        remaining.remove(best)
++
++    return [int(f['id']) for f in sorted(chosen, key=lambda f: (seconds(f), f['id']))]
++
++
++def _printable(value, fallback='Not recorded', limit=500):
++    if value is None or str(value).strip() == '':
++        return fallback
++    # Built-in PDF fonts support Latin characters but not emoji/CJK glyphs.
++    text = str(value).strip()[:limit].encode('latin-1', 'replace').decode('latin-1')
++    return escape(text).replace('\n', '<br/>')
++
++
++def _sg_time(value):
++    try:
++        dt = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
++        if dt.tzinfo is None:
++            dt = dt.replace(tzinfo=timezone.utc)
++        return dt.astimezone(SGT).strftime('%d %b %Y, %I:%M %p SGT')
++    except (TypeError, ValueError):
++        return 'Not recorded'
++
++
++def _video_time(value):
++    seconds = max(0, int(float(value or 0)))
++    return f'{seconds // 3600:02}:{(seconds // 60) % 60:02}:{seconds % 60:02}'
++
++
++def _flag(value):
++    return {'yes': 'Reported missing', 'no': 'No reported violation',
++            'unclear': 'Unclear'}.get(value, 'Not recorded')
++
++
++def render_summary_pdf(incident: dict, frames: list[dict], review: dict | None,
++                       selected_ids: list[int], evidence_dir: Path) -> bytes:
++    """Generate a concise, printable A4 summary without mutating SQLite."""
++    from reportlab.lib import colors
++    from reportlab.lib.enums import TA_CENTER
++    from reportlab.lib.pagesizes import A4
++    from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
++    from reportlab.platypus import (Image, Paragraph, SimpleDocTemplate,
++                                   Spacer, Table, TableStyle)
++
++    navy = colors.HexColor('#122948')
++    green = colors.HexColor('#16764e')
++    muted = colors.HexColor('#5c7087')
++    line = colors.HexColor('#dce6ef')
++    light = colors.HexColor('#f3f7fa')
++    ink = colors.HexColor('#1c2b3e')
++
++    base = getSampleStyleSheet()
++    styles = {
++        'brand': ParagraphStyle('PPEBrand', parent=base['Normal'], fontName='Helvetica-Bold',
++                                fontSize=9, leading=13, textColor=green),
++        'title': ParagraphStyle('PPETitle', parent=base['Heading1'], fontName='Helvetica-Bold',
++                                fontSize=22, leading=27, textColor=navy, spaceAfter=9),
++        'section': ParagraphStyle('PPESection', parent=base['Heading2'], fontName='Helvetica-Bold',
++                                  fontSize=12, leading=16, textColor=navy, spaceBefore=13, spaceAfter=7),
++        'body': ParagraphStyle('PPEBody', parent=base['Normal'], fontName='Helvetica',
++                               fontSize=9, leading=13.5, textColor=ink),
++        'small': ParagraphStyle('PPESmall', parent=base['Normal'], fontName='Helvetica',
++                                fontSize=8, leading=11, textColor=muted),
++        'label': ParagraphStyle('PPELabel', parent=base['Normal'], fontName='Helvetica-Bold',
++                                fontSize=8, leading=11, textColor=muted),
++        'center': ParagraphStyle('PPECenter', parent=base['Normal'], alignment=TA_CENTER,
++                                 fontSize=8, leading=11, textColor=muted),
++    }
++
++    def p(text, style='body'):
++        return Paragraph(text, styles[style])
++
++    buffer = BytesIO()
++    doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=42, rightMargin=42,
++                            topMargin=41, bottomMargin=49, title=f'PPE Incident {incident["id"]} Summary',
++                            author='PPE Safety Manager')
++    story = [p('SAFETY MONITORING  /  INCIDENT DOCUMENTATION', 'brand'), Spacer(1, 4),
++             p('PPE Incident Summary', 'title')]
++
++    status = _printable(incident.get('status'))
++    source = 'Video upload' if incident.get('video_name') else 'Image upload'
++    intro = Table([
++        [p(f'<b>Incident #{incident["id"]}</b>'), p(f'<b>Status: {status}</b>')],
++        [p(f'Source: {source}', 'small'), p(f'Severity label: {_printable(incident.get("severity"))}', 'small')],
++    ], colWidths=[255, 252])
++    intro.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, -1), light),
++                               ('BOX', (0, 0), (-1, -1), .6, line),
++                               ('VALIGN', (0, 0), (-1, -1), 'TOP'),
++                               ('LEFTPADDING', (0, 0), (-1, -1), 12),
++                               ('RIGHTPADDING', (0, 0), (-1, -1), 12),
++                               ('TOPPADDING', (0, 0), (-1, -1), 7),
++                               ('BOTTOMPADDING', (0, 0), (-1, -1), 7)]))
++    story.extend([intro, Spacer(1, 9)])
++
++    meta = [
++        ('Location', incident.get('location'), 'Model', incident.get('model')),
++        ('Source file', incident.get('video_name') or incident.get('camera'),
++         'First detected', _sg_time(incident.get('created_at'))),
++        ('Last detected', _sg_time(incident.get('last_seen_at')),
++         'Saved analyses', str(len(frames)) if frames else 'No individual analyses saved'),
++    ]
++    metadata = Table([
++        [p(f'<b>{left}</b><br/>{_printable(lv)}', 'body'),
++         p(f'<b>{right}</b><br/>{_printable(rv)}', 'body')]
++        for left, lv, right, rv in meta
++    ], colWidths=[253.5, 253.5])
++    metadata.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), .4, line),
++                                  ('VALIGN', (0, 0), (-1, -1), 'TOP'),
++                                  ('LEFTPADDING', (0, 0), (-1, -1), 10),
++                                  ('TOPPADDING', (0, 0), (-1, -1), 8),
++                                  ('BOTTOMPADDING', (0, 0), (-1, -1), 8)]))
++    story.extend([metadata, p('AI-reported PPE findings', 'section')])
++    ppe = Table([
++        [p('Helmet', 'label'), p('Safety vest', 'label'), p('Boots', 'label')],
++        [p(_flag(incident.get('helmet_violation'))),
++         p(_flag(incident.get('vest_violation'))),
++         p(_flag(incident.get('boots_violation')))],
++    ], colWidths=[169, 169, 169])
++    ppe.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), light),
++                             ('GRID', (0, 0), (-1, -1), .4, line),
++                             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
++                             ('LEFTPADDING', (0, 0), (-1, -1), 9),
++                             ('TOPPADDING', (0, 0), (-1, -1), 7),
++                             ('BOTTOMPADDING', (0, 0), (-1, -1), 7)]))
++    story.extend([ppe, Spacer(1, 6),
++                  p('These are model-reported assessments, not verified safety findings or model accuracy scores.', 'small')])
++
++    history = (review or {}).get('history') or []
++    current = (review or {}).get('currentFinding')
++    finding = {'confirmed': 'Confirmed PPE concern', 'false_alert': 'False alert / PPE present',
++               'inconclusive': 'Inconclusive - more evidence required'}.get(current, 'No current human finding')
++    latest_review = next((event for event in history if event.get('action') == 'review'), None)
++    latest_resolution = next((event for event in history if event.get('action') == 'resolve'), None)
++    story.append(p('Human verification', 'section'))
++    story.append(p(f'<b>Current finding:</b> {_printable(finding)}'))
++    if latest_review and current:
++        story.append(p(f'<b>Reviewed by:</b> {_printable(latest_review.get("reviewer"))} '
++                       f'({_sg_time(latest_review.get("createdAt"))})'))
++        story.append(p(f'<b>Reviewer notes:</b> {_printable(latest_review.get("notes"), limit=1000)}'))
++    if latest_resolution:
++        story.append(p(f'<b>Corrective action:</b> {_printable(latest_resolution.get("notes"), limit=1000)}'))
++    story.append(Spacer(1, 6))
++    if incident.get('video_name'):
++        story.append(p('Video reports show selected saved frames, not the playable source video. '
++                       'Repeated frames can show the same person.', 'small'))
++    story.append(p('AI findings are unverified. Appearance alone cannot establish certified safety footwear.', 'small'))
++
++    indexed = {int(f['id']): f for f in frames}
++    selected_frames = [indexed[i] for i in selected_ids if i in indexed]
++    selected_frames.sort(key=lambda f: (float(f.get('video_seconds') or 0), f['id']))
++    story.append(p(f'Selected evidence ({len(selected_frames)} frame(s))', 'section'))
++    if not selected_frames:
++        story.append(p('No saved evidence frames were selected or available for this incident.', 'small'))
++
++    for idx, frame in enumerate(selected_frames, 1):
++        path = saved_evidence_path(frame.get('evidence_url'), evidence_dir)
++        picture = p('Image file is no longer available.', 'small')
++        if path:
++            try:
++                with PILImage.open(path) as picture_file:
++                    width, height = picture_file.size
++                    picture_file.verify()
++                width_scale = min(209 / width, 110 / height)
++                picture = Image(str(path), width=width * width_scale,
++                                height=height * width_scale)
++            except (OSError, ValueError, ZeroDivisionError):
++                picture = p('Image file could not be read.', 'small')
++
++        heading = (f'Frame {idx} - {_video_time(frame.get("video_seconds"))}'
++                   if incident.get('video_name') else 'Saved photograph')
++        detail = [p(f'<b>{_printable(heading)}</b>'),
++                  p(f'<b>Model outcome:</b> {_printable(frame.get("overall_status"))}'),
++                  p(f'Helmet: {_flag(frame.get("helmet_violation"))}', 'small'),
++                  p(f'Vest: {_flag(frame.get("vest_violation"))}', 'small'),
++                  p(f'Boots: {_flag(frame.get("boots_violation"))}', 'small')]
++        workers = frame.get('workers') or []
++        if workers:
++            detail.append(p(f'Worker descriptions saved: {len(workers)}', 'small'))
++        frame_row = Table([[picture, detail]], colWidths=[223, 284])
++        frame_row.setStyle(TableStyle([('BOX', (0, 0), (-1, -1), .5, line),
++                                       ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
++                                       ('BACKGROUND', (0, 0), (-1, -1), light),
++                                       ('LEFTPADDING', (0, 0), (-1, -1), 9),
++                                       ('TOPPADDING', (0, 0), (-1, -1), 9),
++                                       ('BOTTOMPADDING', (0, 0), (-1, -1), 9)]))
++        story.extend([frame_row, Spacer(1, 9)])
++
++    def page_footer(canvas, doc_obj):
++        canvas.setStrokeColor(line)
++        canvas.line(42, 34, A4[0] - 42, 34)
++        canvas.setFont('Helvetica', 8)
++        canvas.setFillColor(muted)
++        canvas.drawString(42, 23, f'PPE Incident #{incident["id"]}  |  Generated {_sg_time(datetime.now(timezone.utc).isoformat())}')
++        canvas.drawRightString(A4[0] - 42, 23, f'Page {doc_obj.page}')
++
++    doc.build(story, onFirstPage=page_footer, onLaterPages=page_footer)
++    return buffer.getvalue()
+diff --git a/backend/requirements.txt b/backend/requirements.txt
+index 26512cd..e12e91d 100644
+--- a/backend/requirements.txt
++++ b/backend/requirements.txt
+@@ -3,3 +3,4 @@ uvicorn>=0.30,<1
+ httpx>=0.27,<1
+ python-multipart>=0.0.9,<1
+ Pillow>=10,<13
++reportlab>=4.4,<6
+diff --git a/backend/storage.py b/backend/storage.py
+index 630fc04..babcf16 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -575,6 +575,14 @@ class PPEStore:
+             frames.append(frame)
+         return frames
+ 
++    def incident_for_report(self, incident_id: int) -> dict | None:
++        """Return saved incident metadata without changing its review state."""
++        with self.connect() as conn:
++            row = conn.execute(
++                'SELECT * FROM incidents WHERE id = ?', (incident_id,)
++            ).fetchone()
++        return dict(row) if row else None
++
+     def analytics(self, period: str = '7', location: str = '',
+                   *, reference_time: datetime | None = None) -> dict:
+         """Aggregate saved model attempts, not incidents or verified safety findings.
+diff --git a/backend/tests/test_reporting.py b/backend/tests/test_reporting.py
+new file mode 100644
+index 0000000..b3e8ea4
+--- /dev/null
++++ b/backend/tests/test_reporting.py
+@@ -0,0 +1,131 @@
++"""Stage 6A: summary reports must remain read-only and evidence-scoped."""
++
++import io
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++from fastapi.testclient import TestClient
++from PIL import Image
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import main  # noqa: E402
++from reporting import (available_evidence_ids, recommend_summary_frames,
++                       render_summary_pdf, saved_evidence_path)  # noqa: E402
++from storage import PPEStore  # noqa: E402
++
++
++class ReportingTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.base = Path(self.temp.name)
++        self.images = self.base / 'evidence'
++        self.images.mkdir()
++        self.store = PPEStore(self.base / 'test.sqlite3')
++
++    def save_image(self, suffix):
++        filename = f'{suffix:032x}.jpg'
++        Image.new('RGB', (720, 400), (130, 180, 200)).save(self.images / filename)
++        return f'/api/evidence/{filename}'
++
++    def save_frame(self, idx, seconds, helmet, vest, boots, status='violation'):
++        payload = {
++            'overall_status': status, 'helmet_violation': helmet,
++            'vest_violation': vest, 'boots_violation': boots,
++            'worker_count': 1, 'model': 'qwen-test', 'camera': 'TEST',
++            'location': 'Test construction site', 'evidence_url': self.save_image(idx),
++            'workers': [{'position': 'left', 'helmet': 'worn',
++                         'vest': 'unclear', 'boots': 'unclear'}],
++        }
++        record = self.store.save_analysis(payload, video_session_id='report-video',
++                                          video_name='inspection.mp4', video_seconds=seconds)
++        return record
++
++    def test_only_saved_local_jpegs_are_eligible(self):
++        saved = self.save_image(1)
++        self.assertIsNotNone(saved_evidence_path(saved, self.images))
++        for unsafe in ['https://site.example/secret.jpg', '/other/secret.jpg',
++                       '/api/evidence/../secret.jpg', 'blob:obsolete',
++                       '/api/evidence/' + 'f' * 32 + '.jpg']:
++            self.assertIsNone(saved_evidence_path(unsafe, self.images))
++
++    def test_selection_covers_varied_ppe_patterns_and_drops_missing_files(self):
++        url = lambda i: self.save_image(i)
++        frames = [
++            {'id': 1, 'video_seconds': 0, 'overall_status': 'compliant',
++             'evidence_url': url(1)},
++            {'id': 2, 'video_seconds': 15, 'overall_status': 'violation',
++             'helmet_violation': 'yes', 'evidence_url': url(2)},
++            {'id': 3, 'video_seconds': 16, 'overall_status': 'violation',
++             'helmet_violation': 'yes', 'evidence_url': url(3)},
++            {'id': 4, 'video_seconds': 45, 'overall_status': 'violation',
++             'vest_violation': 'yes', 'evidence_url': url(4)},
++            {'id': 5, 'video_seconds': 60, 'overall_status': 'violation',
++             'helmet_violation': 'yes', 'vest_violation': 'yes', 'evidence_url': url(5)},
++            {'id': 6, 'video_seconds': 75, 'overall_status': 'unclear',
++             'boots_violation': 'unclear', 'evidence_url': url(6)},
++            {'id': 7, 'video_seconds': 90, 'overall_status': 'violation',
++             'boots_violation': 'yes', 'evidence_url': '/api/evidence/' + 'f' * 32 + '.jpg'},
++        ]
++        picked = recommend_summary_frames(frames, self.images, limit=5)
++        self.assertLessEqual(len(picked), 5)
++        self.assertEqual(len(picked), len(set(picked)))
++        self.assertIn(5, picked)  # multiple definite concerns
++        self.assertIn(4, picked)  # different PPE concern
++        self.assertIn(6, picked)  # unclear evidence for review
++        self.assertNotIn(7, picked)  # missing file
++        self.assertEqual(len(available_evidence_ids(frames, self.images)), 6)
++
++    def test_report_api_scopes_frames_and_keeps_saved_review(self):
++        first = self.save_frame(8, 15, 'yes', 'no', 'unclear')
++        self.save_frame(9, 45, 'yes', 'yes', 'unclear')
++        incident_id = first['incident_id']
++        self.store.record_review(incident_id, finding='confirmed',
++                                 reviewer='Officer A', notes='Confirmed from saved images.')
++        self.store.review_action(incident_id, action='resolve', reviewer='Officer A',
++                                 notes='Worker received the required safety helmet.')
++        before = self.store.review_history(incident_id)
++        frames = self.store.incident_analyses(incident_id)
++
++        with patch.object(main, 'STORE', self.store), patch.object(main, 'EVIDENCE_DIR', self.images):
++            client = TestClient(main.app)
++            suggested = client.get(f'/api/incidents/{incident_id}/report-options')
++            self.assertEqual(suggested.status_code, 200)
++            self.assertEqual(len(suggested.json()['availableIds']), 2)
++
++            unknown = client.post(f'/api/incidents/{incident_id}/summary-report',
++                                  json={'analysis_ids': [9999]})
++            self.assertEqual(unknown.status_code, 400)
++            dupes = client.post(f'/api/incidents/{incident_id}/summary-report',
++                                json={'analysis_ids': [frames[0]['id']] * 2})
++            self.assertEqual(dupes.status_code, 400)
++            too_many = client.post(f'/api/incidents/{incident_id}/summary-report',
++                                   json={'analysis_ids': list(range(7))})
++            self.assertEqual(too_many.status_code, 422)
++
++            result = client.post(f'/api/incidents/{incident_id}/summary-report',
++                                 json={'analysis_ids': [f['id'] for f in frames]})
++            self.assertEqual(result.status_code, 200, result.text[:200])
++            self.assertEqual(result.headers['content-type'], 'application/pdf')
++            self.assertTrue(result.content.startswith(b'%PDF-'))
++            self.assertGreater(len(result.content), 4000)
++
++        self.assertEqual(self.store.review_history(incident_id), before)
++        self.assertEqual(self.store.incident_for_report(incident_id)['status'], 'Resolved')
++
++    def test_legacy_incident_without_images_still_exports_metadata(self):
++        incident_id = self.store.save_analysis({
++            'overall_status': 'unclear', 'model': 'legacy-model',
++            'location': 'Old site', 'camera': 'UPLOAD', 'worker_count': 1,
++        })['incident_id']
++        pdf = render_summary_pdf(self.store.incident_for_report(incident_id),
++                                 self.store.incident_analyses(incident_id),
++                                 self.store.review_history(incident_id), [], self.images)
++        self.assertTrue(pdf.startswith(b'%PDF-'))
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/my-app/src/App.css b/my-app/src/App.css
+index cdfcf06..d2d69fd 100644
+--- a/my-app/src/App.css
++++ b/my-app/src/App.css
+@@ -407,6 +407,7 @@ body:has(.dashboard.dark-theme) {
+ .modal-backdrop { position: fixed; z-index: 30; inset: 0; background: rgba(2,6,23,.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
+ .detail-modal { background: #fff; color: #172033; width: min(560px, 100%); max-height: 90vh; overflow-y: auto; border-radius: 15px; padding: 26px; box-shadow: 0 20px 65px rgba(0,0,0,.3); }
+ .modal-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
++.ppe-modal-heading-actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+ .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 24px 0; }
+ .detail-grid dt { color: #64748b; font-size: 12px; margin-bottom: 5px; }
+ .detail-grid dd { margin: 0; font-weight: 650; font-size: 14px; }
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index c28b31e..b7c4ab1 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
+ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
+ import "./App.css";
+ import AnalysisUpload from "./AnalysisUpload";
++import ReportPreview from "./ReportPreview";
+ 
+ // The previous browser data is read only for one-way migration into SQLite.
+ // It is not deleted or overwritten, so you can recover it if needed.
+@@ -121,6 +122,7 @@ function App() {
+   const [detailFrames, setDetailFrames] = useState([]);
+   const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState("");
+   const [zoomEvidenceUrl, setZoomEvidenceUrl] = useState("");
++  const [reportOpen, setReportOpen] = useState(false);
+   const [detailsLoading, setDetailsLoading] = useState(false);
+   const [detailsError, setDetailsError] = useState("");
+   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
+@@ -214,6 +216,7 @@ useEffect(() => {
+ 
+   useEffect(() => {
+     if (selectedId == null) {
++      setReportOpen(false);
+       setDetailFrames([]);
+       setSelectedEvidenceUrl('');
+       setZoomEvidenceUrl('');
+@@ -223,6 +226,7 @@ useEffect(() => {
+     }
+     let cancelled = false;
+     setDetailFrames([]);
++    setReportOpen(false);
+     setSelectedEvidenceUrl('');
+     setZoomEvidenceUrl('');
+     setDetailsLoading(true);
+@@ -309,6 +313,10 @@ useEffect(() => {
+ 
+   function handleDetailKeys(event) {
+     if (event.key === "Escape") {
++      if (reportOpen) {
++        setReportOpen(false);
++        return;
++      }
+       if (zoomEvidenceUrl) {
+         setZoomEvidenceUrl('');
+         return;
+@@ -317,7 +325,7 @@ useEffect(() => {
+       return;
+     }
+ 
+-    if (zoomEvidenceUrl) return;
++    if (zoomEvidenceUrl || reportOpen) return;
+     const tag = event.target?.tagName;
+     if (
+       ["INPUT", "TEXTAREA", "SELECT"].includes(tag) ||
+@@ -337,7 +345,7 @@ useEffect(() => {
+ 
+   window.addEventListener("keydown", handleDetailKeys);
+   return () => window.removeEventListener("keydown", handleDetailKeys);
+-}, [selectedId, videoDetailFrames.length, zoomEvidenceUrl]);
++}, [selectedId, videoDetailFrames.length, zoomEvidenceUrl, reportOpen]);
+ 
+ useEffect(() => {
+   frameHistoryRef.current
+@@ -790,7 +798,7 @@ function workerPpeClass(value) {
+         </section>
+       )}
+ 
+-      {selected && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-heading"><div className="modal-heading"><div><p className="eyebrow">INCIDENT #{selected.id}</p><h2 id="detail-heading">{selected.issue}</h2></div><button className="outline-button" onClick={() => setSelectedId(null)} aria-label="Close incident details">✕</button></div>
++      {selected && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}><section className="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-heading"><div className="modal-heading"><div><p className="eyebrow">INCIDENT #{selected.id}</p><h2 id="detail-heading">{selected.issue}</h2></div><div className="ppe-modal-heading-actions"><button type="button" className="outline-button" disabled={detailsLoading || reviewLoading} onClick={() => setReportOpen(true)}>Generate report</button><button type="button" className="outline-button" onClick={() => setSelectedId(null)} aria-label="Close incident details">✕</button></div></div>
+         
+         {selected.videoName && videoDetailFrames.length > 0 ? (
+           <div className="incident-frame-review">
+@@ -1208,6 +1216,14 @@ function workerPpeClass(value) {
+         </section>
+         <p className="muted">Prototype: a VLM prediction is not a verified safety violation. Reviewer names are entered manually; there is no user authentication.</p>
+       </section></div>}
++      {selected && reportOpen && (
++        <ReportPreview
++          incident={selected}
++          frames={detailFrames}
++          review={reviewData}
++          onClose={() => setReportOpen(false)}
++        />
++      )}
+       {selected && zoomEvidenceUrl && (
+         <div
+           className="ppe-evidence-lightbox"
+diff --git a/my-app/src/ReportPreview.css b/my-app/src/ReportPreview.css
+new file mode 100644
+index 0000000..19cba15
+--- /dev/null
++++ b/my-app/src/ReportPreview.css
+@@ -0,0 +1,123 @@
++/* Stage 6A: read-only report preview and evidence-frame selection. */
++.ppe-report-backdrop {
++  position: fixed;
++  z-index: 120;
++  inset: 0;
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  padding: 20px;
++  background: rgba(9, 23, 40, .79);
++}
++.ppe-report-dialog {
++  width: min(1160px, 100%);
++  max-height: calc(100vh - 40px);
++  display: flex;
++  flex-direction: column;
++  overflow: hidden;
++  border-radius: 15px;
++  background: #f3f7fb;
++  color: #152a44;
++  box-shadow: 0 22px 70px rgba(0, 0, 0, .35);
++}
++.ppe-report-header, .ppe-report-footer {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 15px;
++  padding: 18px 25px;
++  background: #fff;
++}
++.ppe-report-header { border-bottom: 1px solid #dce5ef; }
++.ppe-report-header h2 { font-size: 22px; margin: 3px 0; }
++.ppe-report-header p { font-size: 12px; color: #6b8297; margin: 0; }
++.ppe-report-kicker { font-size: 10px; color: #24654a; font-weight: 850; letter-spacing: .09em; }
++.ppe-report-content {
++  min-height: 0;
++  display: grid;
++  grid-template-columns: minmax(0, 1.65fr) minmax(270px, .85fr);
++  gap: 18px;
++  overflow: auto;
++  padding: 22px 25px;
++}
++.ppe-report-paper {
++  padding: 25px;
++  border: 1px solid #dce7ef;
++  border-radius: 10px;
++  background: #fff;
++  box-shadow: 0 5px 18px rgba(24, 52, 83, .06);
++  min-width: 0;
++}
++.ppe-report-document-heading { border-bottom: 2px solid #d9e6ee; padding-bottom: 12px; }
++.ppe-report-document-heading > span { color: #217650; letter-spacing: .1em; font-size: 10px; font-weight: 850; }
++.ppe-report-document-heading h3 { margin: 4px 0 5px; font-size: 25px; color: #122948; }
++.ppe-report-document-heading small { color: #607b92; }
++.ppe-report-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 19px 0; }
++.ppe-report-metadata > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
++.ppe-report-metadata span { font-size: 11px; color: #6a8396; }
++.ppe-report-metadata strong { font-size: 12px; overflow-wrap: anywhere; }
++.ppe-report-paper h4 { margin: 20px 0 9px; font-size: 14px; color: #172f4a; }
++.ppe-report-paper > p { margin: 5px 0; font-size: 12px; line-height: 1.55; }
++.ppe-report-ppe { border: 1px solid #dae5ee; background: #f5f8fa; border-radius: 9px; padding: 12px; display: flex; flex-wrap: wrap; gap: 13px; font-size: 11px; }
++.ppe-report-ppe span { display: flex; flex-direction: column; gap: 3px; }
++.ppe-report-ppe strong { font-size: 12px; color: #203a54; }
++.ppe-report-secondary { color: #62798b; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
++.ppe-report-selected-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
++.ppe-report-frame-card { min-width: 0; border: 1px solid #dce6ee; border-radius: 9px; overflow: hidden; }
++.ppe-report-thumbnail { display: block; width: 100%; height: 138px; object-fit: contain; background: #102339; }
++.ppe-report-image-missing { height: 138px; display: grid; place-items: center; background: #eaf0f5; color: #607589; font-size: 12px; }
++.ppe-report-frame-card > div:last-child { display: flex; flex-direction: column; padding: 9px 11px; gap: 5px; font-size: 11px; overflow-wrap: anywhere; }
++.ppe-report-frame-card span { color: #607589; }
++.ppe-report-disclaimer { margin-top: 18px !important; color: #698198; font-size: 11px !important; }
++.ppe-report-controls {
++  align-self: start;
++  padding: 20px;
++  border: 1px solid #dce7ef;
++  border-radius: 11px;
++  background: #fff;
++  min-width: 0;
++}
++.ppe-report-controls h3 { margin: 0 0 5px; font-size: 16px; }
++.ppe-report-controls > p { color: #60798c; font-size: 12px; line-height: 1.55; margin: 5px 0 13px; }
++.ppe-report-selection-summary { display: flex; justify-content: space-between; align-items: center; gap: 9px; padding: 13px 0; border-top: 1px solid #e1eaf0; font-size: 12px; }
++.ppe-report-selection-summary span { color: #4c8668; text-align: right; }
++.ppe-report-reset { width: 100%; margin-bottom: 10px; }
++.ppe-report-frame-options { max-height: 380px; overflow-y: auto; border-top: 1px solid #e1eaf0; }
++.ppe-report-frame-option { display: flex; gap: 12px; align-items: start; padding: 12px 3px; border-bottom: 1px solid #e1eaf0; cursor: pointer; }
++.ppe-report-frame-option input { accent-color: #158252; margin-top: 3px; flex-shrink: 0; }
++.ppe-report-frame-option span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
++.ppe-report-frame-option strong { font-size: 12px; }
++.ppe-report-frame-option small { font-size: 11px; color: #74869b; line-height: 1.45; overflow-wrap: anywhere; }
++.ppe-report-footer { border-top: 1px solid #dce5ef; flex-wrap: wrap; }
++.ppe-report-footer > span { font-size: 11px; color: #60798c; }
++.ppe-report-footer > div { display: flex; gap: 10px; align-items: center; margin-left: auto; }
++.ppe-report-footer button:not(.outline-button) { border: 0; border-radius: 8px; color: white; background: #15794e; padding: 11px 16px; font-weight: 750; }
++.ppe-report-footer button:not(.outline-button):hover { background: #11633f; }
++.ppe-report-footer button:disabled { opacity: .58; cursor: not-allowed; }
++.ppe-report-error { flex-basis: 100%; margin: 0; padding: 9px 11px; border: 1px solid #efb6ae; border-radius: 7px; color: #982f2f; background: #fff0ee; font-size: 12px; }
++
++.dashboard.dark-theme .ppe-report-dialog { background: #102035; color: #e8f2fb; }
++.dashboard.dark-theme .ppe-report-header, .dashboard.dark-theme .ppe-report-footer,
++.dashboard.dark-theme .ppe-report-controls { background: #172b44; border-color: #335371; }
++.dashboard.dark-theme .ppe-report-header p,
++.dashboard.dark-theme .ppe-report-controls > p,
++.dashboard.dark-theme .ppe-report-footer > span { color: #b6c8db; }
++.dashboard.dark-theme .ppe-report-frame-options,
++.dashboard.dark-theme .ppe-report-frame-option,
++.dashboard.dark-theme .ppe-report-selection-summary { border-color: #36516e; }
++.dashboard.dark-theme .ppe-report-frame-option small { color: #b0c4d7; }
++/* The document preview intentionally resembles the light paper PDF in both themes. */
++
++@media (max-width: 900px) {
++  .ppe-report-content { grid-template-columns: 1fr; }
++  .ppe-report-frame-options { max-height: 230px; }
++}
++@media (max-width: 600px) {
++  .ppe-report-backdrop { padding: 7px; }
++  .ppe-report-dialog { max-height: calc(100vh - 14px); }
++  .ppe-report-content { padding: 13px; }
++  .ppe-report-header, .ppe-report-footer { padding: 13px; }
++  .ppe-report-paper, .ppe-report-controls { padding: 16px; }
++  .ppe-report-selected-grid { grid-template-columns: 1fr; }
++  .ppe-report-header h2 { font-size: 19px; }
++}
+diff --git a/my-app/src/ReportPreview.jsx b/my-app/src/ReportPreview.jsx
+new file mode 100644
+index 0000000..e7600d1
+--- /dev/null
++++ b/my-app/src/ReportPreview.jsx
+@@ -0,0 +1,226 @@
++import { useEffect, useState } from 'react';
++import './ReportPreview.css';
++
++const MAX_FRAMES = 6;
++
++const findingLabels = {
++  confirmed: 'Confirmed PPE concern',
++  false_alert: 'False alert / PPE present',
++  inconclusive: 'Inconclusive - more evidence required',
++};
++
++function videoTime(value) {
++  const seconds = Math.max(0, Math.floor(Number(value) || 0));
++  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
++    .map((n) => String(n).padStart(2, '0')).join(':');
++}
++
++function ppeLabel(value) {
++  return { yes: 'Reported missing', no: 'No violation reported', unclear: 'Unclear' }[value] || 'Not recorded';
++}
++
++function displayTime(value) {
++  if (!value || Number.isNaN(Date.parse(value))) return 'Not recorded';
++  return new Intl.DateTimeFormat('en-SG', {
++    timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', year: 'numeric',
++    hour: 'numeric', minute: '2-digit', hour12: true,
++  }).format(new Date(value));
++}
++
++function EvidenceThumbnail({ src, alt }) {
++  const [failed, setFailed] = useState(false);
++  useEffect(() => { setFailed(false); }, [src]);
++  if (!src || failed) return <div className="ppe-report-image-missing">Evidence unavailable</div>;
++  return <img className="ppe-report-thumbnail" src={src} alt={alt} loading="eager"
++    onError={() => setFailed(true)} />;
++}
++
++export default function ReportPreview({ incident, frames, review, onClose }) {
++  const [selectedIds, setSelectedIds] = useState([]);
++  const [availableIds, setAvailableIds] = useState([]);
++  const [recommendedIds, setRecommendedIds] = useState([]);
++  const [selectionMode, setSelectionMode] = useState('automatic');
++  const [loading, setLoading] = useState(true);
++  const [exporting, setExporting] = useState(false);
++  const [error, setError] = useState('');
++
++  useEffect(() => {
++    let active = true;
++    setLoading(true);
++    setError('');
++    fetch(`/api/incidents/${incident.id}/report-options`)
++      .then(async (response) => {
++        const result = await response.json().catch(() => ({}));
++        if (!response.ok) throw new Error(result.detail || `Could not load report options (${response.status}).`);
++        return result;
++      })
++      .then((result) => {
++        if (!active) return;
++        const allowed = Array.isArray(result.availableIds) ? result.availableIds : [];
++        const suggested = Array.isArray(result.recommendedIds) ? result.recommendedIds : [];
++        setAvailableIds(allowed);
++        setRecommendedIds(suggested);
++        setSelectedIds(suggested);
++        setSelectionMode('automatic');
++      })
++      .catch((err) => { if (active) setError(err.message); })
++      .finally(() => { if (active) setLoading(false); });
++    return () => { active = false; };
++  }, [incident.id]);
++
++  const available = new Set(availableIds);
++  const sortedFrames = frames.slice().sort((left, right) =>
++    Number(left.video_seconds || 0) - Number(right.video_seconds || 0) || left.id - right.id);
++  const shownFrames = sortedFrames.filter((frame) => selectedIds.includes(frame.id));
++  const latestReview = review.history?.find((entry) => entry.action === 'review');
++  const latestResolution = review.history?.find((entry) => entry.action === 'resolve');
++
++  function toggleFrame(id) {
++    setError('');
++    setSelectionMode('manual');
++    setSelectedIds((current) => current.includes(id)
++      ? current.filter((candidate) => candidate !== id)
++      : current.length < MAX_FRAMES ? [...current, id] : current);
++  }
++
++  function resetRecommendations() {
++    setSelectedIds(recommendedIds);
++    setSelectionMode('automatic');
++    setError('');
++  }
++
++  async function downloadPdf() {
++    setExporting(true);
++    setError('');
++    try {
++      const response = await fetch(`/api/incidents/${incident.id}/summary-report`, {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ analysis_ids: selectedIds }),
++      });
++      if (!response.ok) {
++        const result = await response.json().catch(() => ({}));
++        throw new Error(result.detail || `Report generation failed (${response.status}).`);
++      }
++      const blob = await response.blob();
++      const url = URL.createObjectURL(blob);
++      const download = document.createElement('a');
++      download.href = url;
++      download.download = `PPE_Incident_${incident.id}_Summary.pdf`;
++      document.body.appendChild(download);
++      download.click();
++      download.remove();
++      setTimeout(() => URL.revokeObjectURL(url), 60000);
++    } catch (err) {
++      setError(err.message);
++    } finally {
++      setExporting(false);
++    }
++  }
++
++  return (
++    <div className="ppe-report-backdrop" onMouseDown={(event) => {
++      if (event.target === event.currentTarget) onClose();
++    }}>
++      <section className="ppe-report-dialog" role="dialog" aria-modal="true"
++        aria-labelledby="ppe-report-title">
++        <header className="ppe-report-header">
++          <div>
++            <span className="ppe-report-kicker">STAGE 6A · INCIDENT DOCUMENTATION</span>
++            <h2 id="ppe-report-title">Summary Report Preview</h2>
++            <p>Incident #{incident.id} · {incident.videoName ? 'Video analysis' : 'Image analysis'}</p>
++          </div>
++          <button type="button" className="outline-button" onClick={onClose}>✕ Close</button>
++        </header>
++
++        <div className="ppe-report-content">
++          <div className="ppe-report-paper" aria-label="Report content preview">
++            <div className="ppe-report-document-heading">
++              <span>PPE SAFETY MONITORING</span>
++              <h3>Incident Summary</h3>
++              <small>AI assessments are not verified safety findings.</small>
++            </div>
++            <div className="ppe-report-metadata">
++              <div><span>Incident</span><strong>#{incident.id} · {incident.status}</strong></div>
++              <div><span>Location</span><strong>{incident.location}</strong></div>
++              <div><span>Model</span><strong>{incident.model || 'Not recorded'}</strong></div>
++              <div><span>Detected</span><strong>{displayTime(incident.createdAt)}</strong></div>
++              <div><span>Source</span><strong>{incident.videoName || incident.camera || 'Manual upload'}</strong></div>
++              <div><span>Saved analyses</span><strong>{frames.length}</strong></div>
++            </div>
++            <h4>AI-reported PPE concerns</h4>
++            <div className="ppe-report-ppe">
++              <span>Helmet: <strong>{ppeLabel(incident.helmetViolation)}</strong></span>
++              <span>Vest: <strong>{ppeLabel(incident.vestViolation)}</strong></span>
++              <span>Boots: <strong>{ppeLabel(incident.bootsViolation)}</strong></span>
++            </div>
++            <h4>Human verification</h4>
++            <p><strong>{findingLabels[review.currentFinding] || 'Not human verified'}</strong></p>
++            {latestReview && review.currentFinding && (
++              <p className="ppe-report-secondary">{latestReview.reviewer}: {latestReview.notes}</p>
++            )}
++            {latestResolution?.notes && (
++              <p className="ppe-report-secondary">Corrective action: {latestResolution.notes}</p>
++            )}
++            <h4>Selected evidence ({shownFrames.length})</h4>
++            {loading ? <p className="ppe-report-secondary">Checking saved evidence…</p> :
++              shownFrames.length ? (
++                <div className="ppe-report-selected-grid">
++                  {shownFrames.map((frame) => (
++                    <article className="ppe-report-frame-card" key={frame.id}>
++                      <EvidenceThumbnail src={frame.evidence_url}
++                        alt={`Evidence at ${videoTime(frame.video_seconds)}`} />
++                      <div>
++                        <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Saved photograph'}</strong>
++                        <span>{frame.overall_status} · Helmet: {ppeLabel(frame.helmet_violation)}</span>
++                        <span>Vest: {ppeLabel(frame.vest_violation)} · Boots: {ppeLabel(frame.boots_violation)}</span>
++                      </div>
++                    </article>
++                  ))}
++                </div>
++              ) : <p className="ppe-report-secondary">No saved evidence selected. You can still export the incident record.</p>}
++            <p className="ppe-report-disclaimer">Preview layout only. The downloaded PDF uses the same saved incident data and selected frames. An entire source video is not embedded.</p>
++          </div>
++
++          <aside className="ppe-report-controls" aria-label="Select frames for the report">
++            <h3>Evidence selection</h3>
++            <p>Automatically recommended frames can be changed before export.</p>
++            <div className="ppe-report-selection-summary">
++              <strong>{selectedIds.length} / {MAX_FRAMES} selected</strong>
++              <span>{selectionMode === 'automatic' ? 'Automatic recommendations' : 'Manually customised'}</span>
++            </div>
++            <button type="button" className="outline-button ppe-report-reset"
++              disabled={loading} onClick={resetRecommendations}>Reset to automatic selection</button>
++            <div className="ppe-report-frame-options">
++              {loading ? <p>Loading available frames…</p> :
++                sortedFrames.filter((frame) => available.has(frame.id)).length ?
++                  sortedFrames.filter((frame) => available.has(frame.id)).map((frame) => (
++                    <label key={frame.id} className="ppe-report-frame-option">
++                      <input type="checkbox" checked={selectedIds.includes(frame.id)}
++                        disabled={!selectedIds.includes(frame.id) && selectedIds.length >= MAX_FRAMES}
++                        onChange={() => toggleFrame(frame.id)} />
++                      <span>
++                        <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Image evidence'}</strong>
++                        <small>{frame.overall_status} · {['helmet', 'vest', 'boots']
++                          .filter((ppe) => frame[`${ppe}_violation`] === 'yes').join(', ') || 'No definite missing PPE'}</small>
++                      </span>
++                    </label>
++                  )) : <p className="ppe-report-secondary">No retrievable saved photographs are available for this incident.</p>}
++            </div>
++            <p className="ppe-report-secondary">The summary includes at most six saved frames. Frame counts do not represent unique workers.</p>
++          </aside>
++        </div>
++
++        <footer className="ppe-report-footer">
++          {error && <p role="alert" className="ppe-report-error">{error}</p>}
++          <span>Detailed Reports and bulk CSV exports will follow in later stages.</span>
++          <div>
++            <button type="button" className="outline-button" onClick={onClose}>Cancel</button>
++            <button type="button" disabled={loading || exporting}
++              onClick={downloadPdf}>{exporting ? 'Generating PDF…' : 'Download Summary PDF'}</button>
++          </div>
++        </footer>
++      </section>
++    </div>
++  );
++}

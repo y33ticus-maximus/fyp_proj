@@ -1,0 +1,65 @@
+diff --git a/my-app/src/AnalysisUpload.jsx b/my-app/src/AnalysisUpload.jsx
+index aeaabb6..21c73fb 100644
+--- a/my-app/src/AnalysisUpload.jsx
++++ b/my-app/src/AnalysisUpload.jsx
+@@ -333,7 +333,7 @@ export default function AnalysisUpload({ onResult }) {
+           </div>
+ 
+           {activeMedia === 'video' && videoFile && (
+-            <div className="analysis-field analysis-interval-field">
++            <div className={`analysis-field analysis-interval-field${intervalPreset === 'custom' ? ' has-custom-interval' : ''}`}>
+               <label htmlFor="ppe-interval-preset">Sample interval</label>
+               <select id="ppe-interval-preset" value={intervalPreset}
+                 disabled={videoRunning || busy}
+diff --git a/my-app/src/MediaAnalysis.css b/my-app/src/MediaAnalysis.css
+index a46d3b9..65af29a 100644
+--- a/my-app/src/MediaAnalysis.css
++++ b/my-app/src/MediaAnalysis.css
+@@ -234,6 +234,29 @@
+ 
+ .analysis-panel .analysis-custom-interval input { width: 100%; }
+ 
++/* Keep the two interval controls side by side, aligned with the upload button. */
++.analysis-panel .analysis-interval-field.has-custom-interval {
++  display: grid;
++  grid-template-columns: repeat(2, minmax(0, 1fr));
++  grid-template-rows: auto 42px;
++  gap: 6px 12px;
++  width: min(490px, 100%);
++  align-items: end;
++}
++.analysis-panel .analysis-interval-field.has-custom-interval > label:first-child {
++  grid-column: 1;
++  grid-row: 1;
++}
++.analysis-panel .analysis-interval-field.has-custom-interval > select {
++  grid-column: 1;
++  grid-row: 2;
++}
++.analysis-panel .analysis-interval-field.has-custom-interval > .analysis-custom-interval {
++  grid-column: 2;
++  grid-row: 1 / 3;
++  margin-top: 0;
++}
++
+ .analysis-panel .analysis-sampling-estimate {
+   border: 1px solid #cbdfee;
+   border-radius: 9px;
+@@ -296,6 +319,17 @@
+   .analysis-panel .analysis-interval-field {
+     width: 100%;
+   }
++  .analysis-panel .analysis-interval-field.has-custom-interval {
++    width: 100%;
++  }
++}
++
++@media (max-width: 430px) {
++  .analysis-panel .analysis-interval-field.has-custom-interval {
++    display: flex;
++    flex-direction: column;
++    align-items: stretch;
++  }
+ }
+ 
+ /* ===== Scrollable video frame history ===== */

@@ -15,12 +15,13 @@ from typing import Literal
 from urllib.parse import urlparse
 from uuid import uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, Response
 import httpx
 from PIL import Image, ImageOps, UnidentifiedImageError
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from storage import PPEStore
+from reporting import available_evidence_ids, recommend_summary_frames, render_summary_pdf
 
 # Load the local .env file without requiring python-dotenv.
 # Never commit this file; the remote server URL belongs in your local environment.
@@ -78,14 +79,20 @@ For violation fields only use yes/no/unclear. No surrounding commentary or markd
 """
 
 TriState = Literal['yes', 'no', 'unclear']
+WorkerPPE = Literal['worn', 'missing', 'unclear']
 
 
 class Worker(BaseModel):
     model_config = ConfigDict(extra='ignore')
     position: str = ''
-    helmet: str = 'unclear'
-    vest: str = 'unclear'
-    boots: str = 'unclear'
+    helmet: WorkerPPE = 'unclear'
+    vest: WorkerPPE = 'unclear'
+    boots: WorkerPPE = 'unclear'
+
+    @field_validator('helmet', 'vest', 'boots', mode='before')
+    @classmethod
+    def normalise_worker_ppe(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
 
 
 class PPEOutput(BaseModel):
@@ -135,6 +142,64 @@ def overall_status(output: PPEOutput, review_unclear_boots: bool = False) -> str
     if output.boots_violation == 'unclear':
         return 'unclear' if review_unclear_boots else 'boots_unverified'
     return 'compliant'
+
+
+def consistency_warnings(output: PPEOutput) -> list[str]:
+    """Identify contradictory VLM fields before a result can be called compliant.
+
+    The checks are deliberately conservative: an inconsistent response needs
+    human review, not an automatically invented PPE violation.
+    """
+    warnings = []
+    listed_workers = len(output.workers)
+    if listed_workers != output.worker_count:
+        warnings.append(
+            f'Model reported {output.worker_count} worker(s) but gave '
+            f'{listed_workers} individual worker assessment(s).'
+        )
+
+    for item, label in (('helmet', 'Helmet'), ('vest', 'Safety vest'), ('boots', 'Boots')):
+        values = [getattr(worker, item) for worker in output.workers]
+        image_flag = getattr(output, f'{item}_violation')
+        if image_flag == 'no' and ('missing' in values or 'unclear' in values):
+            warnings.append(
+                f'{label}: image-level result says no violation, but at least '
+                'one worker is marked missing or unclear.'
+            )
+        elif image_flag == 'yes' and listed_workers == output.worker_count \
+                and 'missing' not in values:
+            warnings.append(
+                f'{label}: image-level result reports a violation, but no '
+                'individual worker is marked missing.'
+            )
+
+    if output.worker_count == 0 and any(
+        getattr(output, f'{item}_violation') != 'unclear'
+        for item in ('helmet', 'vest', 'boots')
+    ):
+        warnings.append(
+            'No workers were detected, but image-level PPE fields are not all unclear.'
+        )
+    return warnings
+
+
+def validated_overall_status(output: PPEOutput,
+                             review_unclear_boots: bool = False) -> tuple[str, list[str]]:
+    warnings = consistency_warnings(output)
+    status = overall_status(output, review_unclear_boots=review_unclear_boots)
+    if warnings and status in ('compliant', 'boots_unverified', 'no_workers'):
+        if status == 'no_workers' and not output.workers:
+            # A no-worker image should not create an alert solely because the
+            # model filled in an inconsistent image-level PPE field.
+            return status, warnings
+        # Preserve the opt-in footwear review policy. Contradictory boots-only
+        # responses are not compliant, but should not create alerts by default.
+        boots_only = (not review_unclear_boots
+                      and output.helmet_violation == 'no'
+                      and output.vest_violation == 'no'
+                      and all(warning.startswith('Boots:') for warning in warnings))
+        status = 'boots_unverified' if boots_only else 'unclear'
+    return status, warnings
 
 
 def normalise_image(contents: bytes) -> bytes:
@@ -251,7 +316,9 @@ def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if
         raise HTTPException(502, detail=message) from None
 
     duration = round(time.monotonic() - started, 2)
-    overall = overall_status(parsed, review_unclear_boots=review_unclear_boots)
+    overall, warnings = validated_overall_status(
+        parsed, review_unclear_boots=review_unclear_boots
+    )
     evidence_url = None
     # Evidence images have no base64 representation in browser localStorage.
     if overall in ('violation', 'unclear') or video_name:
@@ -268,6 +335,7 @@ def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if
         'review_unclear_boots': review_unclear_boots,
         'worker_count': parsed.worker_count,
         'workers': [worker.model_dump() for worker in parsed.workers],
+        'validation_warnings': warnings,
         'processing_seconds': duration,
         'analyzed_at': datetime.now(timezone.utc).isoformat(),
         'evidence_url': evidence_url,
@@ -293,6 +361,13 @@ def evidence(filename: str):
 @app.get('/api/state')
 def dashboard_state():
     return STORE.state()
+
+
+@app.get('/api/analytics')
+def monitoring_analytics(period: Literal['7', '30', 'all'] = '7',
+                         location: str = Query(default='All locations', max_length=100)):
+    """Aggregate SQLite analysis attempts for monitoring, never model accuracy."""
+    return STORE.analytics(period=period, location=location)
 
 
 class IncidentStatusChange(BaseModel):
@@ -326,6 +401,94 @@ def archive_incident(incident_id: int):
 @app.get('/api/incidents/{incident_id}/analyses')
 def incident_frames(incident_id: int):
     return {'analyses': STORE.incident_analyses(incident_id)}
+
+
+class SummaryReportRequest(BaseModel):
+    analysis_ids: list[int] = Field(default_factory=list, max_length=6)
+
+
+@app.get('/api/incidents/{incident_id}/report-options')
+def incident_report_options(incident_id: int):
+    if STORE.incident_for_report(incident_id) is None:
+        raise HTTPException(404, detail='Incident not found.')
+    analyses = STORE.incident_analyses(incident_id)
+    available = available_evidence_ids(analyses, EVIDENCE_DIR)
+    recommended = recommend_summary_frames(analyses, EVIDENCE_DIR)
+    return {'availableIds': available, 'recommendedIds': recommended, 'maxFrames': 6}
+
+
+@app.post('/api/incidents/{incident_id}/summary-report')
+def download_summary_report(incident_id: int, selection: SummaryReportRequest):
+    incident = STORE.incident_for_report(incident_id)
+    if incident is None:
+        raise HTTPException(404, detail='Incident not found.')
+    analyses = STORE.incident_analyses(incident_id)
+    available_ids = {row['id'] for row in analyses}
+    selected_ids = selection.analysis_ids
+    if len(selected_ids) != len(set(selected_ids)) or any(
+        analysis_id not in available_ids for analysis_id in selected_ids
+    ):
+        raise HTTPException(400, detail='Selected frames must belong to this incident and be unique.')
+    if any(analysis_id not in available_evidence_ids(analyses, EVIDENCE_DIR)
+           for analysis_id in selected_ids):
+        raise HTTPException(400, detail='One or more selected evidence files are unavailable. Refresh the report preview.')
+    review = STORE.review_history(incident_id)
+    try:
+        pdf = render_summary_pdf(incident, analyses, review, selected_ids, EVIDENCE_DIR)
+    except ImportError:
+        raise HTTPException(503, detail='PDF export requires ReportLab. Install backend requirements.') from None
+    return Response(
+        content=pdf, media_type='application/pdf',
+        headers={
+            'Content-Disposition': f'attachment; filename="PPE_Incident_{incident_id}_Summary.pdf"',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+        },
+    )
+
+
+class HumanReviewSubmission(BaseModel):
+    finding: Literal['confirmed', 'false_alert', 'inconclusive']
+    reviewer: str = Field(min_length=1, max_length=80)
+    notes: str = Field(min_length=8, max_length=1000)
+
+
+class HumanReviewAction(BaseModel):
+    action: Literal['start', 'resolve', 'dismiss', 'reopen']
+    reviewer: str = Field(min_length=1, max_length=80)
+    notes: str = Field(default='', max_length=1000)
+
+
+@app.get('/api/incidents/{incident_id}/reviews')
+def incident_reviews(incident_id: int):
+    review = STORE.review_history(incident_id)
+    if review is None:
+        raise HTTPException(404, detail='Incident not found.')
+    return review
+
+
+@app.post('/api/incidents/{incident_id}/reviews')
+def save_incident_review(incident_id: int, update: HumanReviewSubmission):
+    try:
+        review = STORE.record_review(incident_id, finding=update.finding,
+                                     reviewer=update.reviewer, notes=update.notes)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    if review is None:
+        raise HTTPException(404, detail='Incident not found.')
+    return review
+
+
+@app.post('/api/incidents/{incident_id}/review-actions')
+def change_review_status(incident_id: int, update: HumanReviewAction):
+    try:
+        review = STORE.review_action(incident_id, action=update.action,
+                                     reviewer=update.reviewer, notes=update.notes)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    if review is None:
+        raise HTTPException(404, detail='Incident not found.')
+    return review
 
 
 class NotificationChange(BaseModel):

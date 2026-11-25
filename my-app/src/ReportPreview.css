@@ -1,0 +1,159 @@
+/* Stage 6A: read-only report preview and evidence-frame selection. */
+.ppe-report-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(9, 23, 40, .79);
+}
+.ppe-report-dialog {
+  width: min(1160px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 15px;
+  background: #f3f7fb;
+  color: #152a44;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .35);
+}
+.ppe-report-header, .ppe-report-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  padding: 18px 25px;
+  background: #fff;
+}
+.ppe-report-header { border-bottom: 1px solid #dce5ef; }
+.ppe-report-header h2 { font-size: 22px; margin: 3px 0; }
+.ppe-report-header p { font-size: 12px; color: #6b8297; margin: 0; }
+.ppe-report-kicker { font-size: 10px; color: #24654a; font-weight: 850; letter-spacing: .09em; }
+.ppe-report-content {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  overflow: auto;
+  padding: 22px 25px;
+}
+.ppe-report-paper {
+  padding: 25px;
+  border: 1px solid #dce7ef;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(24, 52, 83, .06);
+  min-width: 0;
+}
+.ppe-report-document-heading { border-bottom: 2px solid #d9e6ee; padding-bottom: 12px; }
+.ppe-report-document-heading > span { color: #217650; letter-spacing: .1em; font-size: 10px; font-weight: 850; }
+.ppe-report-document-heading h3 { margin: 4px 0 5px; font-size: 25px; color: #122948; }
+.ppe-report-document-heading small { color: #607b92; }
+.ppe-report-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 19px 0; }
+.ppe-report-metadata > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ppe-report-metadata span { font-size: 11px; color: #6a8396; }
+.ppe-report-metadata strong { font-size: 12px; overflow-wrap: anywhere; }
+.ppe-report-paper h4 { margin: 20px 0 9px; font-size: 14px; color: #172f4a; }
+.ppe-report-paper > p { margin: 5px 0; font-size: 12px; line-height: 1.55; }
+.ppe-report-ppe { border: 1px solid #dae5ee; background: #f5f8fa; border-radius: 9px; padding: 12px; display: flex; flex-wrap: wrap; gap: 13px; font-size: 11px; }
+.ppe-report-ppe span { display: flex; flex-direction: column; gap: 3px; }
+.ppe-report-ppe strong { font-size: 12px; color: #203a54; }
+.ppe-report-secondary { color: #62798b; font-size: 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.ppe-report-selected-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.ppe-report-frame-card { min-width: 0; border: 1px solid #dce6ee; border-radius: 9px; overflow: hidden; }
+.ppe-report-thumbnail { display: block; width: 100%; height: 138px; object-fit: contain; background: #102339; }
+.ppe-report-image-missing { height: 138px; display: grid; place-items: center; background: #eaf0f5; color: #607589; font-size: 12px; }
+.ppe-report-frame-card > div:last-child { display: flex; flex-direction: column; padding: 9px 11px; gap: 5px; font-size: 11px; overflow-wrap: anywhere; }
+.ppe-report-frame-card span { color: #607589; }
+.ppe-report-disclaimer { margin-top: 18px !important; color: #698198; font-size: 11px !important; }
+.ppe-report-evidence-workspace {
+  min-width: 0;
+  padding: 19px;
+  border: 1px solid #dce7ef;
+  border-radius: 11px;
+  background: #fff;
+}
+.ppe-report-evidence-heading, .ppe-report-evidence-actions, .ppe-report-selected-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+.ppe-report-evidence-heading { margin-bottom: 15px; flex-wrap: wrap; }
+.ppe-report-evidence-heading h3 { font-size: 18px; margin: 0 0 5px; }
+.ppe-report-evidence-heading p { font-size: 12px; color: #667d91; margin: 0; }
+.ppe-report-evidence-actions { flex-wrap: wrap; }
+.ppe-report-count { border-radius: 18px; padding: 7px 11px; color: #126341; background: #e8f7ee; font-weight: 800; font-size: 12px; white-space: nowrap; }
+.ppe-report-evidence-columns { display: grid; grid-template-columns: 1fr 1.12fr; gap: 15px; min-width: 0; }
+.ppe-report-controls {
+  padding: 15px;
+  border: 1px solid #dce7ef;
+  border-radius: 11px;
+  background: #f8fbfd;
+  min-width: 0;
+}
+.ppe-report-controls h4, .ppe-report-selected-panel h4 { margin: 0 0 6px; font-size: 14px; }
+.ppe-report-controls > p { margin: 5px 0 10px; }
+.ppe-report-selection-summary { display: flex; justify-content: space-between; align-items: center; gap: 9px; padding: 13px 0; border-top: 1px solid #e1eaf0; font-size: 12px; }
+.ppe-report-selection-summary span { color: #4c8668; text-align: right; }
+.ppe-report-reset { white-space: nowrap; }
+.ppe-report-frame-options { height: 390px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid #e1eaf0; }
+.ppe-report-frame-option { display: flex; gap: 10px; align-items: center; padding: 11px 6px; border-bottom: 1px solid #e1eaf0; cursor: pointer; border-radius: 7px; }
+.ppe-report-frame-option.is-selected { background: #eaf7f0; }
+.ppe-report-frame-option input { accent-color: #158252; margin: 0; flex-shrink: 0; }
+.ppe-report-option-image { flex: 0 0 76px; width: 76px; }
+.ppe-report-option-image .ppe-report-thumbnail, .ppe-report-option-image .ppe-report-image-missing { height: 54px; border-radius: 5px; }
+.ppe-report-option-image .ppe-report-image-missing { font-size: 9px; text-align: center; }
+.ppe-report-frame-option span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ppe-report-frame-option strong { font-size: 12px; }
+.ppe-report-frame-option small { font-size: 11px; color: #74869b; line-height: 1.45; overflow-wrap: anywhere; }
+.ppe-report-recommendation { font-style: normal; font-size: 10px; line-height: 1.4; color: #13754b; font-weight: 700; }
+.ppe-report-selected-panel { min-width: 0; border: 1px solid #dce7ef; border-radius: 11px; padding: 15px; background: #f8fbfd; }
+.ppe-report-selected-heading span { color: #668096; font-size: 11px; }
+.ppe-report-selected-scroll { height: 416px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 2px 0; }
+.ppe-report-selected-grid .ppe-report-thumbnail, .ppe-report-selected-grid .ppe-report-image-missing { height: 112px; }
+.ppe-report-remove-frame { align-self: start; border: 0; background: none; color: #a03636; font: inherit; font-weight: 750; padding: 0; cursor: pointer; }
+.ppe-report-remove-frame:hover { text-decoration: underline; }
+.ppe-report-evidence-note { color: #688199; font-size: 11px; line-height: 1.5; margin: 12px 0 0; }
+.ppe-report-footer { border-top: 1px solid #dce5ef; flex-wrap: wrap; }
+.ppe-report-footer > span { font-size: 11px; color: #60798c; }
+.ppe-report-footer > div { display: flex; gap: 10px; align-items: center; margin-left: auto; }
+.ppe-report-footer button:not(.outline-button) { border: 0; border-radius: 8px; color: white; background: #15794e; padding: 11px 16px; font-weight: 750; }
+.ppe-report-footer button:not(.outline-button):hover { background: #11633f; }
+.ppe-report-footer button:disabled { opacity: .58; cursor: not-allowed; }
+.ppe-report-error { flex-basis: 100%; margin: 0; padding: 9px 11px; border: 1px solid #efb6ae; border-radius: 7px; color: #982f2f; background: #fff0ee; font-size: 12px; }
+
+.dashboard.dark-theme .ppe-report-dialog { background: #102035; color: #e8f2fb; }
+.dashboard.dark-theme .ppe-report-header, .dashboard.dark-theme .ppe-report-footer,
+.dashboard.dark-theme .ppe-report-evidence-workspace,
+.dashboard.dark-theme .ppe-report-controls, .dashboard.dark-theme .ppe-report-selected-panel { background: #172b44; border-color: #335371; }
+.dashboard.dark-theme .ppe-report-header p,
+.dashboard.dark-theme .ppe-report-controls > p,
+.dashboard.dark-theme .ppe-report-evidence-heading p,
+.dashboard.dark-theme .ppe-report-evidence-note,
+.dashboard.dark-theme .ppe-report-footer > span { color: #b6c8db; }
+.dashboard.dark-theme .ppe-report-frame-options,
+.dashboard.dark-theme .ppe-report-frame-option,
+.dashboard.dark-theme .ppe-report-selection-summary { border-color: #36516e; }
+.dashboard.dark-theme .ppe-report-frame-option small { color: #b0c4d7; }
+.dashboard.dark-theme .ppe-report-frame-option.is-selected { background: #234f44; }
+.dashboard.dark-theme .ppe-report-recommendation { color: #8ee3b6; }
+/* The document preview intentionally resembles the light paper PDF in both themes. */
+
+@media (max-width: 900px) {
+  .ppe-report-evidence-columns { grid-template-columns: 1fr; }
+  .ppe-report-frame-options, .ppe-report-selected-scroll { height: 245px; }
+}
+@media (max-width: 600px) {
+  .ppe-report-backdrop { padding: 7px; }
+  .ppe-report-dialog { max-height: calc(100vh - 14px); }
+  .ppe-report-content { padding: 13px; }
+  .ppe-report-header, .ppe-report-footer { padding: 13px; }
+  .ppe-report-paper, .ppe-report-controls, .ppe-report-selected-panel, .ppe-report-evidence-workspace { padding: 13px; }
+  .ppe-report-selected-grid { grid-template-columns: 1fr; }
+  .ppe-report-header h2 { font-size: 19px; }
+  .ppe-report-evidence-actions { width: 100%; }
+}

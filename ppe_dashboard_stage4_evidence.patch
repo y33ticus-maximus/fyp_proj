@@ -1,0 +1,543 @@
+diff --git a/backend/storage.py b/backend/storage.py
+index ae12c8d..8925d1f 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -384,7 +384,8 @@ class PPEStore:
+         with self.connect() as conn:
+             rows = conn.execute('''
+                 SELECT id, analyzed_at, overall_status, video_seconds, evidence_url,
+-                       model, helmet_violation, vest_violation, boots_violation, result_json
++                       model, helmet_violation, vest_violation, boots_violation,
++                       worker_count, result_json
+                 FROM analyses WHERE incident_id = ? ORDER BY id ASC
+             ''', (incident_id,)).fetchall()
+         frames = []
+@@ -397,6 +398,34 @@ class PPEStore:
+                 result = {}
+             warnings = result.get('validation_warnings', []) if isinstance(result, dict) else []
+             frame['validation_warnings'] = warnings if isinstance(warnings, list) else []
++            # The original model response is retained in SQLite. Expose only the
++            # individual fields needed for evidence review, including on older
++            # records that have no saved worker list.
++            saved_workers = result.get('workers') if isinstance(result, dict) else None
++            workers = []
++            if isinstance(saved_workers, list):
++                for worker in saved_workers[:30]:
++                    if not isinstance(worker, dict):
++                        continue
++                    position = worker.get('position')
++                    if not isinstance(position, str) or not position.strip():
++                        position = f'Worker {len(workers) + 1}'
++                    position = position.strip()[:120]
++
++                    def ppe_status(item):
++                        value = worker.get(item)
++                        if not isinstance(value, str):
++                            return None
++                        value = value.strip().lower()
++                        return value if value in {'worn', 'missing', 'unclear'} else None
++
++                    workers.append({
++                        'position': position,
++                        'helmet': ppe_status('helmet'),
++                        'vest': ppe_status('vest'),
++                        'boots': ppe_status('boots'),
++                    })
++            frame['workers'] = workers
+             frames.append(frame)
+         return frames
+ 
+diff --git a/backend/tests/test_worker_review.py b/backend/tests/test_worker_review.py
+new file mode 100644
+index 0000000..a805adb
+--- /dev/null
++++ b/backend/tests/test_worker_review.py
+@@ -0,0 +1,75 @@
++"""Worker-level evidence review: python -m unittest discover -s backend/tests -v"""
++
++import json
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++from storage import PPEStore  # noqa: E402
++
++
++class WorkerReviewTests(unittest.TestCase):
++    def setUp(self):
++        self.directory = tempfile.TemporaryDirectory()
++        self.addCleanup(self.directory.cleanup)
++        self.store = PPEStore(Path(self.directory.name) / 'ppe.sqlite3')
++
++    def save_alert(self, workers=None):
++        result = {
++            'overall_status': 'violation', 'model': 'test',
++            'helmet_violation': 'yes', 'vest_violation': 'no',
++            'boots_violation': 'unclear', 'worker_count': 2,
++            'location': 'Site A', 'camera': 'UPLOAD',
++            'workers': workers if workers is not None else [],
++            'validation_warnings': ['Manual check needed'],
++        }
++        return self.store.save_analysis(result)
++
++    def test_saved_worker_assessments_are_available_for_details(self):
++        incident = self.save_alert([
++            {'position': 'left', 'helmet': 'MISSING', 'vest': 'worn', 'boots': 'Unclear'},
++            {'position': 'right', 'helmet': 'worn', 'vest': 'worn', 'boots': 'unclear'},
++        ])
++        frames = self.store.incident_analyses(incident['incident_id'])
++        self.assertEqual(len(frames), 1)
++        self.assertEqual(frames[0]['worker_count'], 2)
++        self.assertEqual(frames[0]['workers'], [
++            {'position': 'left', 'helmet': 'missing', 'vest': 'worn', 'boots': 'unclear'},
++            {'position': 'right', 'helmet': 'worn', 'vest': 'worn', 'boots': 'unclear'},
++        ])
++        self.assertEqual(frames[0]['validation_warnings'], ['Manual check needed'])
++        self.assertNotIn('result_json', frames[0])
++
++    def test_missing_workers_does_not_invent_worker_assessments(self):
++        incident = self.save_alert([])
++        frame = self.store.incident_analyses(incident['incident_id'])[0]
++        self.assertEqual(frame['worker_count'], 2)
++        self.assertEqual(frame['workers'], [])
++
++    def test_bad_worker_fields_do_not_become_false_violations(self):
++        incident = self.save_alert([])
++        with self.store.connect() as conn:
++            conn.execute('UPDATE analyses SET result_json=? WHERE incident_id=?', (
++                json.dumps({'workers': [
++                    {'position': '   ', 'helmet': 'unknown', 'vest': 5, 'boots': ' WORN '},
++                    'not an object',
++                ]}), incident['incident_id']))
++        frame = self.store.incident_analyses(incident['incident_id'])[0]
++        self.assertEqual(frame['workers'], [{
++            'position': 'Worker 1', 'helmet': None, 'vest': None, 'boots': 'worn',
++        }])
++
++    def test_malformed_saved_json_is_safe(self):
++        incident = self.save_alert([])
++        with self.store.connect() as conn:
++            conn.execute('UPDATE analyses SET result_json=? WHERE incident_id=?', (
++                '{broken-json', incident['incident_id']))
++        frame = self.store.incident_analyses(incident['incident_id'])[0]
++        self.assertEqual(frame['workers'], [])
++        self.assertEqual(frame['validation_warnings'], [])
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/my-app/src/App.css b/my-app/src/App.css
+index 1c426b1..eb807f9 100644
+--- a/my-app/src/App.css
++++ b/my-app/src/App.css
+@@ -1478,3 +1478,149 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
+   .ppe-analytics-metric strong { font-size: 24px; }
+   .ppe-analytics-trend-chart { height: 245px; }
+ }
++
++/* Stage 4: evidence-first review inside the existing incident Details dialog. */
++.dashboard .detail-modal {
++  width: min(940px, 100%);
++}
++
++.detail-modal .incident-frame-review {
++  display: grid;
++  grid-template-columns: minmax(0, 1.35fr) minmax(240px, .8fr);
++  gap: 22px;
++  margin-top: 18px;
++}
++
++.detail-modal .incident-frame-history {
++  max-height: 350px;
++  overflow: auto;
++  border: 1px solid #e1e9f0;
++  border-radius: 9px;
++}
++
++.detail-modal .incident-frame-history table {
++  width: 100%;
++}
++
++.detail-modal .incident-frame-history th {
++  position: sticky;
++  top: 0;
++  background: #f3f7fa;
++  z-index: 1;
++}
++
++.detail-modal .ppe-evidence-zoom-trigger {
++  position: relative;
++  display: block;
++  width: 100%;
++  padding: 0;
++  border: 0;
++  border-radius: 10px;
++  background: #101b2c;
++  overflow: hidden;
++  cursor: zoom-in;
++}
++
++.detail-modal .ppe-evidence-zoom-trigger:focus-visible {
++  outline: 3px solid #47b689;
++  outline-offset: 3px;
++}
++
++.detail-modal .ppe-evidence-zoom-trigger img {
++  display: block;
++  width: 100%;
++  max-height: 360px;
++  object-fit: contain;
++  border: 0;
++}
++
++.detail-modal .ppe-evidence-zoom-hint {
++  position: absolute;
++  right: 10px;
++  bottom: 10px;
++  padding: 7px 10px;
++  border-radius: 7px;
++  background: rgba(10, 24, 39, .88);
++  color: #fff;
++  font-size: 11px;
++  font-weight: 750;
++}
++
++.detail-modal .ppe-worker-review {
++  margin-top: 24px;
++  padding: 19px;
++  border: 1px solid #dce7ef;
++  border-radius: 12px;
++  background: #fff;
++}
++
++.detail-modal .ppe-worker-review-heading {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  gap: 12px;
++  margin-bottom: 15px;
++}
++
++.detail-modal .ppe-worker-review-heading h3 { margin: 0 0 5px; font-size: 16px; }
++.detail-modal .ppe-worker-review-heading p { margin: 0; color: #607e94; font-size: 12px; line-height: 1.55; }
++.detail-modal .ppe-worker-count { padding: 6px 9px; border-radius: 30px; background: #e8f6ef; color: #246c49; white-space: nowrap; font-size: 11px; font-weight: 800; }
++.detail-modal .ppe-worker-table-scroll { overflow-x: auto; border: 1px solid #e3ebf1; border-radius: 9px; }
++.detail-modal .ppe-worker-table-scroll table { width: 100%; border-collapse: collapse; font-size: 12px; }
++.detail-modal .ppe-worker-table-scroll th { padding: 11px 14px; background: #f5f8fb; color: #698295; font-size: 11px; text-align: left; white-space: nowrap; }
++.detail-modal .ppe-worker-table-scroll td { padding: 13px 14px; border-top: 1px solid #e9eff3; }
++.detail-modal .ppe-worker-position { min-width: 120px; max-width: 260px; font-weight: 750; overflow-wrap: anywhere; }
++.detail-modal .ppe-worker-status { display: inline-block; padding: 5px 9px; border-radius: 7px; font-size: 11px; font-weight: 800; white-space: nowrap; }
++.detail-modal .ppe-worker-status.worn { color: #187047; background: #e2f5e9; }
++.detail-modal .ppe-worker-status.missing { color: #b43c33; background: #ffebe8; }
++.detail-modal .ppe-worker-status.unclear { color: #92651d; background: #fff2d8; }
++.detail-modal .ppe-worker-status.not-recorded { color: #536b7f; background: #edf2f6; }
++.detail-modal .ppe-worker-empty { margin: 0; padding: 14px; color: #678094; background: #f5f8fb; border-radius: 8px; font-size: 12px; line-height: 1.6; }
++.detail-modal .ppe-worker-unclear-note,
++.detail-modal .ppe-worker-consistency-note { margin: 14px 0 0; padding: 12px 14px; color: #7b5a23; background: #fff7e7; border: 1px solid #f2dba7; border-radius: 9px; font-size: 12px; line-height: 1.6; }
++
++.ppe-evidence-lightbox {
++  position: fixed;
++  z-index: 100;
++  inset: 0;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  justify-content: center;
++  gap: 15px;
++  padding: 72px 24px 28px;
++  background: rgba(5, 15, 28, .95);
++  color: #e9f2fa;
++}
++.ppe-evidence-lightbox img { display: block; max-width: 100%; max-height: calc(100vh - 180px); object-fit: contain; border-radius: 9px; }
++.ppe-evidence-lightbox p { margin: 0; font-size: 12px; color: #c6d7e6; text-align: center; }
++.ppe-evidence-lightbox .ppe-lightbox-close { position: absolute; top: 19px; right: 24px; padding: 9px 15px; border: 1px solid #6f8ca4; border-radius: 8px; background: #1e3a50; color: #fff; font-weight: 750; }
++.ppe-evidence-lightbox .ppe-lightbox-close:focus-visible { outline: 3px solid #47b689; outline-offset: 3px; }
++
++.dashboard.dark-theme .detail-modal .ppe-worker-review { background: #14243a; border-color: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-worker-review-heading p { color: #b4c8df; }
++.dashboard.dark-theme .detail-modal .ppe-worker-count { background: #1d4739; color: #b6f1ce; }
++.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll,
++.dashboard.dark-theme .detail-modal .incident-frame-history { border-color: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll th,
++.dashboard.dark-theme .detail-modal .incident-frame-history th { color: #b4c8df; background: #1d3450; }
++.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll td { border-color: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-worker-status.worn { color: #b8f0cc; background: #224d37; }
++.dashboard.dark-theme .detail-modal .ppe-worker-status.missing { color: #ffc4bb; background: #542a2a; }
++.dashboard.dark-theme .detail-modal .ppe-worker-status.unclear { color: #ffe3a2; background: #503a1d; }
++.dashboard.dark-theme .detail-modal .ppe-worker-status.not-recorded { color: #c2d4e4; background: #344b60; }
++.dashboard.dark-theme .detail-modal .ppe-worker-empty { color: #b4c8df; background: #1d3450; }
++.dashboard.dark-theme .detail-modal .ppe-worker-unclear-note,
++.dashboard.dark-theme .detail-modal .ppe-worker-consistency-note { color: #ffe3a2; background: #49391f; border-color: #816033; }
++
++@media (max-width: 780px) {
++  .detail-modal .incident-frame-review { grid-template-columns: 1fr; }
++  .detail-modal .incident-frame-history { max-height: 230px; }
++}
++@media (max-width: 560px) {
++  .dashboard .detail-modal { padding: 16px; }
++  .detail-modal .ppe-worker-review { padding: 13px; }
++  .detail-modal .ppe-worker-review-heading { flex-wrap: wrap; }
++  .detail-modal .ppe-worker-table-scroll th,
++  .detail-modal .ppe-worker-table-scroll td { padding: 10px 9px; }
++}
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index 8018108..dfbfa0a 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -98,6 +98,9 @@ function App() {
+   const [storageError, setStorageError] = useState("");
+   const [detailFrames, setDetailFrames] = useState([]);
+   const [selectedEvidenceUrl, setSelectedEvidenceUrl] = useState("");
++  const [zoomEvidenceUrl, setZoomEvidenceUrl] = useState("");
++  const [detailsLoading, setDetailsLoading] = useState(false);
++  const [detailsError, setDetailsError] = useState("");
+   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
+   const frameHistoryRef = useRef(null);
+   const { items, notifications } = data;
+@@ -179,14 +182,30 @@ useEffect(() => {
+   useEffect(() => { localStorage.setItem('theme', theme); }, [theme]);
+ 
+   useEffect(() => {
+-    if (selectedId == null) { setDetailFrames([]); setSelectedEvidenceUrl(''); return; }
++    if (selectedId == null) {
++      setDetailFrames([]);
++      setSelectedEvidenceUrl('');
++      setZoomEvidenceUrl('');
++      setDetailsLoading(false);
++      setDetailsError('');
++      return;
++    }
+     let cancelled = false;
+     setDetailFrames([]);
+     setSelectedEvidenceUrl('');
++    setZoomEvidenceUrl('');
++    setDetailsLoading(true);
++    setDetailsError('');
+     setSelectedFrameIndex(0);
+     apiJson(`/api/incidents/${selectedId}/analyses`)
+       .then(result => { if (!cancelled) setDetailFrames(result.analyses || []); })
+-      .catch(() => { if (!cancelled) setDetailFrames([]); });
++      .catch(() => {
++        if (!cancelled) {
++          setDetailFrames([]);
++          setDetailsError('Saved worker assessments could not be loaded. Please try opening Details again.');
++        }
++      })
++      .finally(() => { if (!cancelled) setDetailsLoading(false); });
+     return () => { cancelled = true; };
+   }, [selectedId]);
+ 
+@@ -222,6 +241,14 @@ const videoDetailFrames = detailFrames
+   .sort((a, b) => Number(a.video_seconds) - Number(b.video_seconds));
+ 
+ const selectedDetailFrame = videoDetailFrames[selectedFrameIndex] || null;
++const selectedWorkerAnalysis = selected?.videoName ? selectedDetailFrame : (detailFrames[0] || null);
++const workerAssessments = Array.isArray(selectedWorkerAnalysis?.workers)
++  ? selectedWorkerAnalysis.workers : [];
++const workerCountMismatch = selectedWorkerAnalysis?.worker_count != null &&
++  Number(selectedWorkerAnalysis.worker_count) !== workerAssessments.length;
++const hasUnclearWorkerPpe = workerAssessments.some((worker) =>
++  ['helmet', 'vest', 'boots'].some((item) => worker[item] === 'unclear')
++);
+ const detailWarnings = [...new Set(detailFrames.flatMap((frame) =>
+   Array.isArray(frame.validation_warnings) ? frame.validation_warnings : []
+ ))];
+@@ -231,10 +258,15 @@ useEffect(() => {
+ 
+   function handleDetailKeys(event) {
+     if (event.key === "Escape") {
++      if (zoomEvidenceUrl) {
++        setZoomEvidenceUrl('');
++        return;
++      }
+       setSelectedId(null);
+       return;
+     }
+ 
++    if (zoomEvidenceUrl) return;
+     const tag = event.target?.tagName;
+     if (
+       ["INPUT", "TEXTAREA", "SELECT"].includes(tag) ||
+@@ -254,7 +286,7 @@ useEffect(() => {
+ 
+   window.addEventListener("keydown", handleDetailKeys);
+   return () => window.removeEventListener("keydown", handleDetailKeys);
+-}, [selectedId, videoDetailFrames.length]);
++}, [selectedId, videoDetailFrames.length, zoomEvidenceUrl]);
+ 
+ useEffect(() => {
+   frameHistoryRef.current
+@@ -276,6 +308,17 @@ function reviewIcon(value) {
+   return "—";
+ }
+ 
++function workerPpeLabel(value) {
++  if (value === 'worn') return 'Worn';
++  if (value === 'missing') return 'Missing';
++  if (value === 'unclear') return 'Unclear';
++  return 'Not recorded';
++}
++
++function workerPpeClass(value) {
++  return ['worn', 'missing', 'unclear'].includes(value) ? value : 'not-recorded';
++}
++
+   const visibleNotifications = notifications.filter((n) => notificationFilter === 'All' || !n.read);
+ 
+   async function handleAnalysisResult(result) {
+@@ -635,13 +678,20 @@ function reviewIcon(value) {
+               </h3>
+ 
+               {selectedDetailFrame?.evidence_url ? (
+-                <img
+-                  className="incident-review-image"
+-                  style={{ width: '100%', maxHeight: 320, objectFit: 'contain' }}
+-                  src={selectedDetailFrame.evidence_url}
+-                  alt={`Evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
+-                  loading="lazy"
+-                />
++                <button
++                  type="button"
++                  className="ppe-evidence-zoom-trigger"
++                  aria-label={`Enlarge evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
++                  onClick={() => setZoomEvidenceUrl(selectedDetailFrame.evidence_url)}
++                >
++                  <img
++                    className="incident-review-image"
++                    src={selectedDetailFrame.evidence_url}
++                    alt={`Evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
++                    loading="lazy"
++                  />
++                  <span className="ppe-evidence-zoom-hint">⤢ Enlarge evidence</span>
++                </button>
+               ) : (
+                 <div className="incident-no-evidence">
+                   No evidence image was saved for this frame.
+@@ -754,17 +804,92 @@ function reviewIcon(value) {
+               Verify the photograph before taking action.
+               Visual appearance cannot confirm certified safety footwear.
+             </p>
+-            <img
+-              src={selectedEvidenceUrl || selected.evidenceUrl}
+-              alt={`Evidence photo for incident ${selected.id}`}
+-              loading="lazy"
+-            />
++            <button
++              type="button"
++              className="ppe-evidence-zoom-trigger"
++              aria-label={`Enlarge evidence photo for incident ${selected.id}`}
++              onClick={() => setZoomEvidenceUrl(selectedEvidenceUrl || selected.evidenceUrl)}
++            >
++              <img
++                src={selectedEvidenceUrl || selected.evidenceUrl}
++                alt={`Evidence photo for incident ${selected.id}`}
++                loading="lazy"
++              />
++              <span className="ppe-evidence-zoom-hint">⤢ Enlarge evidence</span>
++            </button>
+           </div>
+         ) : (
+           <p className="muted">
+             No evidence photo was saved for this incident.
+           </p>
+         )}
++        <section className="ppe-worker-review" aria-label="Per-worker PPE assessment">
++          <div className="ppe-worker-review-heading">
++            <div>
++              <h3>Per-worker PPE assessment</h3>
++              <p>
++                {selected.videoName
++                  ? `Saved AI assessment for ${videoTime(selectedDetailFrame?.video_seconds)} (selected frame).`
++                  : 'Saved AI assessment for this photograph.'}
++              </p>
++            </div>
++            {selectedWorkerAnalysis && (
++              <span className="ppe-worker-count">{workerAssessments.length} listed</span>
++            )}
++          </div>
++          {detailsLoading ? (
++            <p className="ppe-worker-empty">Loading saved worker assessments…</p>
++          ) : detailsError ? (
++            <p className="ppe-worker-empty" role="alert">{detailsError}</p>
++          ) : workerAssessments.length ? (
++            <div className="ppe-worker-table-scroll">
++              <table>
++                <thead>
++                  <tr>
++                    <th>Worker / position</th>
++                    <th>Helmet</th>
++                    <th>Safety vest</th>
++                    <th>Boots</th>
++                  </tr>
++                </thead>
++                <tbody>
++                  {workerAssessments.map((worker, index) => (
++                    <tr key={`${selectedWorkerAnalysis?.id || 'photo'}-${index}`}>
++                      <td className="ppe-worker-position">{worker.position || `Worker ${index + 1}`}</td>
++                      {['helmet', 'vest', 'boots'].map((item) => (
++                        <td key={item}>
++                          <span className={`ppe-worker-status ${workerPpeClass(worker[item])}`}>
++                            {workerPpeLabel(worker[item])}
++                          </span>
++                        </td>
++                      ))}
++                    </tr>
++                  ))}
++                </tbody>
++              </table>
++            </div>
++          ) : (
++            <p className="ppe-worker-empty">
++              {selectedWorkerAnalysis?.worker_count === 0
++                ? 'The model reported no workers in this image/frame.'
++                : 'Individual worker assessments were not saved for this record.'}
++            </p>
++          )}
++          {!detailsLoading && !detailsError && workerCountMismatch && (
++            <p className="ppe-worker-consistency-note">
++              ⚠ The model reported {selectedWorkerAnalysis.worker_count} worker(s), but
++              {` ${workerAssessments.length}`} individual assessment(s) were saved.
++              Verify the evidence manually.
++            </p>
++          )}
++          {hasUnclearWorkerPpe && (
++            <p className="ppe-worker-unclear-note">
++              Unclear means the model could not reliably assess that PPE item.
++              It does not automatically mean PPE is missing.
++              A photograph also cannot verify safety-footwear certification.
++            </p>
++          )}
++        </section>
+         {detailWarnings.length > 0 && (
+           <div className="ppe-consistency-warning" role="alert">
+             <strong>⚠ Conflicting model assessments — manual review required</strong>
+@@ -845,6 +970,27 @@ function reviewIcon(value) {
+ <p className="muted">This is a prototype. A VLM prediction is not a verified safety violation; review all evidence before taking action.</p>
+         <div className="modal-actions">{selected.status === "Open" && <button onClick={() => changeStatus(selected.id, "Review")}>Start review</button>}{activeStatus(selected.status) && <><button onClick={() => changeStatus(selected.id, "Resolved")}>Mark resolved</button><button className="outline-button" onClick={() => changeStatus(selected.id, "Dismissed")}>Dismiss false alert</button></>}{!activeStatus(selected.status) && <button className="outline-button" onClick={() => changeStatus(selected.id, "Review")}>Reopen for review</button>}</div>
+       </section></div>}
++      {selected && zoomEvidenceUrl && (
++        <div
++          className="ppe-evidence-lightbox"
++          role="dialog"
++          aria-modal="true"
++          aria-label="Enlarged incident evidence"
++          onMouseDown={(event) => {
++            if (event.target === event.currentTarget) setZoomEvidenceUrl('');
++          }}
++        >
++          <button
++            type="button"
++            className="ppe-lightbox-close"
++            onClick={() => setZoomEvidenceUrl('')}
++          >
++            ✕ Close
++          </button>
++          <img src={zoomEvidenceUrl} alt={`Enlarged saved evidence for incident ${selected.id}`} />
++          <p>Saved evidence · Press Escape or Close to return to the incident.</p>
++        </div>
++      )}
+       <footer>School project prototype · Image/video → FastAPI → configured Ollama · SQLite records · No live camera or Telegram integration</footer>
+       </main>
+     </div>

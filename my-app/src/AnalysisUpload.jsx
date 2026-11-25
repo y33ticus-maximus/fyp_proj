@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import VideoSampler from './VideoSampler';
+import { estimateFrameCount, LARGE_JOB_FRAME_THRESHOLD, validSamplingInterval } from './videoSampling';
 import './MediaAnalysis.css';
 
 const OVERALL_TEXT = {
@@ -38,6 +39,12 @@ function timecode(seconds) {
     .join(':');
 }
 
+function approximateDuration(seconds) {
+  if (seconds < 60) return `about ${Math.round(seconds)} sec`;
+  const minutes = Math.ceil(seconds / 60);
+  return minutes < 60 ? `about ${minutes} min` : `about ${Math.floor(minutes / 60)} hr ${minutes % 60} min`;
+}
+
 /** Browser-only preview for the current file. URLs are revoked on replacement/unmount. */
 function useObjectUrl(file) {
   const [url, setUrl] = useState('');
@@ -57,6 +64,7 @@ function useObjectUrl(file) {
 export default function AnalysisUpload({ onResult }) {
   const [file, setFile] = useState(null);
   const [videoFile, setVideoFile] = useState(null);
+  const [videoDuration, setVideoDuration] = useState(null);
   const [activeMedia, setActiveMedia] = useState('image');
   const [location, setLocation] = useState('Construction site');
   const [camera, setCamera] = useState('UPLOAD');
@@ -68,13 +76,23 @@ export default function AnalysisUpload({ onResult }) {
   const [connectionMessage, setConnectionMessage] = useState('Checking backend...');
   const [busy, setBusy] = useState(false);
   const [videoRunning, setVideoRunning] = useState(false);
-  const [intervalSeconds, setIntervalSeconds] = useState(60);
+  const [intervalPreset, setIntervalPreset] = useState('60');
+  const [customInterval, setCustomInterval] = useState('20');
+  const [largeJobConfirmed, setLargeJobConfirmed] = useState(false);
   const [error, setError] = useState('');
   const [imageResult, setImageResult] = useState(null);
   const [frameHistory, setFrameHistory] = useState([]);
   const [selectedFrameTime, setSelectedFrameTime] = useState(null);
   const analysisLock = useRef(false);
   const videoStartRef = useRef(null);
+
+  const intervalSeconds = intervalPreset === 'custom' ? Number(customInterval) : Number(intervalPreset);
+  const intervalValid = validSamplingInterval(intervalSeconds)
+    && (intervalPreset !== 'custom' || customInterval.trim() !== '');
+  const estimatedFrames = intervalValid ? estimateFrameCount(videoDuration, intervalSeconds) : null;
+  const largeJob = estimatedFrames !== null && estimatedFrames > LARGE_JOB_FRAME_THRESHOLD;
+
+  useEffect(() => { setLargeJobConfirmed(false); }, [videoFile, intervalSeconds]);
 
   const imageUrl = useObjectUrl(file);
   const videoUrl = useObjectUrl(videoFile);
@@ -181,7 +199,7 @@ export default function AnalysisUpload({ onResult }) {
     if (busy || videoRunning || analysisLock.current) return;
 
     if (activeMedia === 'video') {
-      if (videoFile) videoStartRef.current?.();
+      if (videoFile && intervalValid && (!largeJob || largeJobConfirmed)) videoStartRef.current?.();
       return;
     }
 
@@ -200,6 +218,7 @@ export default function AnalysisUpload({ onResult }) {
     setImageResult(null);
     setFrameHistory([]);
     setSelectedFrameTime(null);
+    setVideoDuration(null);
 
     if (!next) {
       setFile(null);
@@ -235,6 +254,7 @@ export default function AnalysisUpload({ onResult }) {
     setError('');
     setFrameHistory([]);
     setSelectedFrameTime(null);
+    setVideoDuration(null);
   }
 
   function handleFrameExtracted(frameFile, metadata) {
@@ -292,7 +312,7 @@ export default function AnalysisUpload({ onResult }) {
             <span className="analysis-small-label">Media</span>
             <label className="analysis-upload-button"
               htmlFor="ppe-unified-media">
-              ? Upload media
+              ↑ Upload media
             </label>
             <input id="ppe-unified-media" type="file"
               className="analysis-hidden-file"
@@ -313,34 +333,65 @@ export default function AnalysisUpload({ onResult }) {
           </div>
 
           {activeMedia === 'video' && videoFile && (
-            <label className="analysis-field analysis-interval-field">
-              <span>Sample interval</span>
-              <select value={intervalSeconds}
+            <div className={`analysis-field analysis-interval-field${intervalPreset === 'custom' ? ' has-custom-interval' : ''}`}>
+              <label htmlFor="ppe-interval-preset">Sample interval</label>
+              <select id="ppe-interval-preset" value={intervalPreset}
                 disabled={videoRunning || busy}
-                onChange={(event) =>
-                  setIntervalSeconds(Number(event.target.value))
-                }>
-                 <option value={1}>Every 1 second</option>
-                <option value={2}>Every 2 seconds</option>
-                <option value={3}>Every 3 seconds</option>
-                <option value={5}>Every 5 seconds</option>
-                <option value={10}>Every 10 seconds</option>
-                <option value={15}>Every 15 seconds</option>
-                <option value={30}>Every 30 seconds</option>
-                <option value={60}>Every 60 seconds</option>
+                onChange={(event) => setIntervalPreset(event.target.value)}>
+                <option value="60">Quick · every 60 seconds</option>
+                <option value="30">Every 30 seconds</option>
+                <option value="15">Every 15 seconds</option>
+                <option value="10">Standard · every 10 seconds</option>
+                <option value="5">Detailed · every 5 seconds</option>
+                <option value="3">Every 3 seconds</option>
+                <option value="2">Every 2 seconds</option>
+                <option value="1">Every 1 second</option>
+                <option value="custom">Custom interval…</option>
               </select>
-            </label>
+              {intervalPreset === 'custom' && (
+                <label className="analysis-custom-interval">
+                  <span>Custom seconds (1–300)</span>
+                  <input type="number" min="1" max="300" step="1" value={customInterval}
+                    disabled={videoRunning || busy}
+                    onChange={(event) => setCustomInterval(event.target.value)} />
+                </label>
+              )}
+            </div>
           )}
 
           <button type="submit" className="analyse-button"
             disabled={!(activeMedia === 'video' ? videoFile : file)
-              || videoRunning || busy}>
+              || videoRunning || busy || (activeMedia === 'video' && (!intervalValid || (largeJob && !largeJobConfirmed)))}>
             {videoRunning || busy ? 'Analysing?' : 'Analyse media'}
           </button>
         </div>
 
+        {activeMedia === 'video' && videoFile && (
+          <div className="analysis-sampling-estimate" role="status">
+            {!intervalValid ? (
+              <p className="analysis-error">Enter a whole-number interval between 1 and 300 seconds.</p>
+            ) : estimatedFrames === null ? (
+              <p>Reading video duration to estimate frame count…</p>
+            ) : (
+              <>
+                <strong>{estimatedFrames} frame{estimatedFrames === 1 ? '' : 's'} estimated</strong>
+                <span> for {timecode(videoDuration)} of video at every {intervalSeconds}s</span>
+                <p>Illustrative model time: {approximateDuration(estimatedFrames * 10)} at 10 seconds per frame. Actual speed varies by model and connection.</p>
+              </>
+            )}
+            {largeJob && (
+              <label className="analysis-large-job-warning">
+                <input type="checkbox" disabled={videoRunning || busy}
+                  checked={largeJobConfirmed}
+                  onChange={(event) => setLargeJobConfirmed(event.target.checked)} />
+                <span>This will submit more than {LARGE_JOB_FRAME_THRESHOLD} individual AI analyses. I understand it may take a long time.</span>
+              </label>
+            )}
+          </div>
+        )}
+
         <details className="analysis-advanced-settings">
-          <summary>? Advanced settings</summary>
+          <summary>⚙ Advanced settings</summary>
           <label className="boot-review-setting">
             <input type="checkbox"
               disabled={videoRunning || busy}
@@ -359,6 +410,8 @@ export default function AnalysisUpload({ onResult }) {
       <VideoSampler
         externalFile={videoFile}
         externalIntervalSeconds={intervalSeconds}
+        externalDurationSeconds={videoDuration}
+        allowLargeWorkload={largeJobConfirmed}
         controlsHidden
         startRef={videoStartRef}
         onAnalyzeFrame={analyzeImageFile}
@@ -387,7 +440,11 @@ export default function AnalysisUpload({ onResult }) {
           )}
           {activeMedia === 'video' && videoUrl && (
             <>
-              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline />
+              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline
+                onLoadedMetadata={(event) => {
+                  const duration = event.currentTarget.duration;
+                  setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : null);
+                }} />
               <p className="ppe-media-caption">{videoFile?.name} · playback independent of AI analysis</p>
               {selectedFrame && frameUrl && (
                 <div className="ppe-current-frame">
@@ -422,6 +479,19 @@ export default function AnalysisUpload({ onResult }) {
           {currentResult && (
             <>
               <p className="ppe-overall-heading">{OVERALL_TEXT[currentResult.overall_status] || 'Analysis complete'}</p>
+              {Array.isArray(currentResult.validation_warnings)
+                && currentResult.validation_warnings.length > 0 && (
+                <div className="ppe-consistency-warning" role="alert">
+                  <strong>⚠ AI response requires manual verification</strong>
+                  <p>The model returned conflicting PPE information. Do not treat this
+                    assessment as verified compliance.</p>
+                  <ul>
+                    {currentResult.validation_warnings.map((warning, index) => (
+                      <li key={`${index}-${warning}`}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="ppe-category-list">
                 {[
                   ['Helmet', currentResult.helmet_violation],

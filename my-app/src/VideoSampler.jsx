@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { buildFrameTimestamps, estimateFrameCount, LARGE_JOB_FRAME_THRESHOLD,
+  validSamplingInterval } from './videoSampling';
 
 /**
  * Extracts frames from a locally selected video. The whole video stays in the
@@ -13,6 +15,8 @@ export default function VideoSampler({
   disabled = false,
   externalFile = null,
   externalIntervalSeconds = null,
+  externalDurationSeconds = null,
+  allowLargeWorkload = true,
   controlsHidden = false,
   startRef = null,
 }) {
@@ -21,10 +25,32 @@ export default function VideoSampler({
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState('');
   const [error, setError] = useState('');
+  const [runStats, setRunStats] = useState({
+    phase: 'idle', total: 0, completed: 0, success: 0, errors: 0,
+    currentFrame: 0, estimatedRemaining: null,
+  });
   const stopRequested = useRef(false);
   const runningLock = useRef(false);
   const chosenVideo = controlsHidden ? externalFile : file;
   const chosenInterval = controlsHidden ? externalIntervalSeconds : intervalSeconds;
+  const plannedFrames = estimateFrameCount(externalDurationSeconds, chosenInterval);
+  const percent = runStats.total
+    ? Math.round(100 * runStats.completed / runStats.total) : 0;
+
+  useEffect(() => {
+    if (!runningLock.current) {
+      setRunStats({ phase: 'idle', total: 0, completed: 0, success: 0,
+        errors: 0, currentFrame: 0, estimatedRemaining: null });
+      setProgress('');
+      setError('');
+    }
+  }, [externalFile]);
+
+  function formatDuration(seconds) {
+    const amount = Math.max(0, Math.round(Number(seconds) || 0));
+    if (amount < 60) return `${amount}s`;
+    return `${Math.floor(amount / 60)}m ${String(amount % 60).padStart(2, '0')}s`;
+  }
 
 
   async function startAnalysis() {
@@ -33,6 +59,8 @@ export default function VideoSampler({
     setRunning(true);
     setError('');
     setProgress('Loading video…');
+    setRunStats({ phase: 'loading', total: 0, completed: 0, success: 0,
+      errors: 0, currentFrame: 0, estimatedRemaining: null });
     stopRequested.current = false;
     const sessionId = crypto.randomUUID();
 
@@ -44,6 +72,9 @@ export default function VideoSampler({
     let started = false;
 
     try {
+      // Lock the parent's file/model controls while video metadata is loading.
+      onStart?.();
+      started = true;
       await new Promise((resolve, reject) => {
         video.onloadeddata = resolve;
         video.onerror = () => reject(new Error('This browser could not decode the video. Try an MP4 (H.264).'));
@@ -57,9 +88,29 @@ export default function VideoSampler({
       if (!video.videoWidth || !video.videoHeight) {
         throw new Error('No usable video frames were found.');
       }
+      if (stopRequested.current) {
+        setProgress('Stopped before processing any frames.');
+        setRunStats((previous) => ({ ...previous, phase: 'stopped' }));
+        return;
+      }
 
-      const timestamps = [];
-      for (let t = 0; t < duration; t += chosenInterval) timestamps.push(t);
+      if (!validSamplingInterval(chosenInterval)) {
+        throw new Error('Choose a valid whole-number sample interval between 1 and 300 seconds.');
+      }
+      const frameCount = estimateFrameCount(duration, chosenInterval);
+      if (frameCount > LARGE_JOB_FRAME_THRESHOLD && controlsHidden && !allowLargeWorkload) {
+        throw new Error(`This video would analyse ${frameCount} frames. Confirm the large workload before starting.`);
+      }
+      // Keep the existing standalone confirmation when the sampler is used without the upload form.
+      if (frameCount > 100 && !controlsHidden && !window.confirm(
+        `This video will require ${frameCount.toLocaleString()} model requests. ` +
+        'The analysis may take a long time. Continue?'
+      )) {
+        setProgress('Analysis cancelled before processing any frames.');
+        setRunStats((previous) => ({ ...previous, phase: 'cancelled' }));
+        return;
+      }
+      const timestamps = buildFrameTimestamps(duration, chosenInterval);
 
       const canvas = document.createElement('canvas');
       const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
@@ -68,10 +119,11 @@ export default function VideoSampler({
       const ctx = canvas.getContext('2d');
       if (!ctx) throw new Error('This browser does not support video frame capture.');
 
-      onStart?.();
-      started = true;
       let success = 0;
       let errors = 0;
+      const runStartedAt = performance.now();
+      setRunStats({ phase: 'running', total: timestamps.length, completed: 0,
+        success: 0, errors: 0, currentFrame: 0, estimatedRemaining: null });
 
       for (let i = 0; i < timestamps.length; i++) {
         if (stopRequested.current) break;
@@ -95,6 +147,7 @@ export default function VideoSampler({
         onFrameExtracted?.(frameFile, metadata);
 
         setProgress(`Analysing frame ${i + 1}/${timestamps.length} · ${seconds}s of footage`);
+        setRunStats((previous) => ({ ...previous, currentFrame: i + 1 }));
         try {
           // Awaiting each request ensures only one Ollama request at a time.
           await onAnalyzeFrame(frameFile, metadata);
@@ -104,13 +157,21 @@ export default function VideoSampler({
           // Individual frame errors are recorded in the parent panel. Continue.
           setError(`A frame could not be analysed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
+        const completed = i + 1;
+        const elapsedSeconds = (performance.now() - runStartedAt) / 1000;
+        const estimate = elapsedSeconds / completed * (timestamps.length - completed);
+        setRunStats((previous) => ({ ...previous, completed, success, errors,
+          estimatedRemaining: Math.round(estimate) }));
       }
+      setRunStats((previous) => ({ ...previous,
+        phase: stopRequested.current ? 'stopped' : 'complete', estimatedRemaining: 0 }));
       setProgress(stopRequested.current
         ? `Stopped · ${success} analysed, ${errors} errors.`
         : `Completed · ${success} analysed, ${errors} errors.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Video processing failed.');
       setProgress('Video analysis stopped.');
+      setRunStats((previous) => ({ ...previous, phase: 'failed' }));
     } finally {
       if (started) onFinish?.();
       video.pause();
@@ -131,7 +192,66 @@ export default function VideoSampler({
     };
   }, [startRef, startAnalysis]);
 
-  if (controlsHidden) return null;
+  if (controlsHidden) {
+    if (!chosenVideo) return null;
+    const activeRun = ['loading', 'running', 'stopped', 'complete', 'failed'].includes(runStats.phase);
+    return (
+      <div className="ppe-video-run-panel" aria-live="polite">
+        <div className="ppe-video-run-header">
+          <div>
+            <strong>Video analysis progress</strong>
+            <p className="muted">Frames are sent to Ollama one at a time.</p>
+          </div>
+          <span className="ppe-video-run-phase">
+            {running ? '● In progress' : runStats.phase === 'complete' ? '✓ Complete'
+              : runStats.phase === 'stopped' ? '■ Stopped'
+              : runStats.phase === 'failed' ? '⚠ Error' : 'Ready'}
+          </span>
+        </div>
+        <div className="ppe-video-run-stats">
+          <span>Sample interval: <strong>{chosenInterval}s</strong></span>
+          <span>Estimated frames: <strong>{plannedFrames?.toLocaleString() ?? 'Reading duration…'}</strong></span>
+          {activeRun && <span>Processed: <strong>{runStats.completed} / {runStats.total || '—'}</strong></span>}
+        </div>
+        {plannedFrames > LARGE_JOB_FRAME_THRESHOLD && !running && runStats.phase === 'idle' && (
+          <p className="ppe-video-run-warning">
+            This will send {plannedFrames.toLocaleString()} requests. Consider a longer
+            sample interval; confirm the large workload above before starting.
+          </p>
+        )}
+        {activeRun && (
+          <>
+            <div className="ppe-video-progress-top">
+              <span>{progress || 'Preparing video…'}</span>
+              <strong>{percent}%</strong>
+            </div>
+            <div className="ppe-video-progress-bar" role="progressbar"
+              aria-label="Video analysis progress" aria-valuemin={0}
+              aria-valuemax={100} aria-valuenow={percent}>
+              <span style={{ width: `${percent}%` }} />
+            </div>
+            <div className="ppe-video-run-stats">
+              <span>Successful: <strong>{runStats.success}</strong></span>
+              <span>Failed: <strong>{runStats.errors}</strong></span>
+              <span>Estimated remaining: <strong>
+                {runStats.estimatedRemaining == null ? 'Waiting for first frame…'
+                  : formatDuration(runStats.estimatedRemaining)}
+              </strong></span>
+            </div>
+          </>
+        )}
+        {running && <button className="ppe-video-stop-button" type="button"
+          disabled={stopRequested.current}
+          onClick={() => {
+            stopRequested.current = true;
+            setProgress('Stopping after the current frame…');
+          }}>
+          {stopRequested.current ? 'Stopping…' : '■ Stop after current frame'}
+        </button>}
+        {error && <p className="analysis-error" role="alert">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="ppe-video-controls">

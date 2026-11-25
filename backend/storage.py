@@ -118,12 +118,26 @@ class PPEStore:
                 );
                 CREATE INDEX IF NOT EXISTS ix_analyses_incident ON analyses(incident_id);
                 CREATE INDEX IF NOT EXISTS ix_analyses_status_time ON analyses(overall_status, analyzed_at);
+                CREATE INDEX IF NOT EXISTS ix_analyses_time_location ON analyses(analyzed_at, location);
                 CREATE TABLE IF NOT EXISTS notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     incident_id INTEGER NOT NULL UNIQUE REFERENCES incidents(id),
                     is_read INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS incident_reviews (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    incident_id INTEGER NOT NULL REFERENCES incidents(id),
+                    action TEXT NOT NULL,
+                    finding TEXT,
+                    reviewer TEXT NOT NULL,
+                    notes TEXT NOT NULL,
+                    from_status TEXT NOT NULL,
+                    to_status TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS ix_incident_reviews_incident
+                    ON incident_reviews(incident_id, id);
             ''')
 
     def save_analysis(self, result: dict, *, video_session_id: str = '',
@@ -336,7 +350,17 @@ class PPEStore:
         if status not in INCIDENT_STATUSES:
             raise ValueError('Invalid incident status')
         with self.connect() as conn:
+            previous = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
+            if not previous:
+                return False
             cur = conn.execute('UPDATE incidents SET status=? WHERE id=?', (status, incident_id))
+            if previous['status'] != status:
+                conn.execute('''
+                    INSERT INTO incident_reviews
+                        (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
+                    VALUES (?, 'status_changed', NULL, 'Legacy API',
+                            'Status changed using the earlier endpoint; reviewer not verified.', ?, ?, ?)
+                ''', (incident_id, previous['status'], status, utc_now()))
             if cur.rowcount and status in ('Resolved', 'Dismissed', 'Archived'):
                 conn.execute(
                     'DELETE FROM notifications WHERE incident_id=?',
@@ -357,17 +381,140 @@ class PPEStore:
         """Archive an active incident, retaining evidence and history."""
         with self.connect() as conn:
             conn.execute('BEGIN IMMEDIATE')
+            previous = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
             cur = conn.execute(
                 "UPDATE incidents SET status='Archived' "
                 "WHERE id=? AND status IN ('Open', 'Review')",
                 (incident_id,)
             )
             if cur.rowcount:
+                conn.execute('''
+                    INSERT INTO incident_reviews
+                        (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
+                    VALUES (?, 'archived', NULL, 'Dashboard',
+                            'Incident archived from the active list.', ?, 'Archived', ?)
+                ''', (incident_id, previous['status'], utc_now()))
                 conn.execute(
                     'DELETE FROM notifications WHERE incident_id=?',
                     (incident_id,)
                 )
             return cur.rowcount > 0
+
+    @staticmethod
+    def _check_reviewer(reviewer: str) -> str:
+        value = reviewer.strip()
+        if not 1 <= len(value) <= 80:
+            raise ValueError('Enter a reviewer name or initials (up to 80 characters).')
+        return value
+
+    def review_history(self, incident_id: int) -> dict | None:
+        """Human findings stay separate from saved AI results and old incidents."""
+        with self.connect() as conn:
+            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
+            if not incident:
+                return None
+            events = conn.execute('''
+                SELECT id, action, finding, reviewer, notes, from_status, to_status, created_at
+                FROM incident_reviews WHERE incident_id=? ORDER BY id DESC
+            ''', (incident_id,)).fetchall()
+        current_finding = None
+        for event in events:
+            if event['action'] == 'reopen' or (
+                event['action'] == 'status_changed'
+                and event['from_status'] in {'Resolved', 'Dismissed'}
+                and event['to_status'] in {'Open', 'Review'}
+            ):
+                break
+            if event['action'] == 'review':
+                current_finding = event['finding']
+                break
+        return {
+            'status': incident['status'],
+            'currentFinding': current_finding,
+            'history': [{
+                'id': event['id'], 'action': event['action'], 'finding': event['finding'],
+                'reviewer': event['reviewer'], 'notes': event['notes'],
+                'fromStatus': event['from_status'], 'toStatus': event['to_status'],
+                'createdAt': event['created_at'],
+            } for event in events[:200]],
+        }
+
+    def record_review(self, incident_id: int, *, finding: str, reviewer: str, notes: str) -> dict | None:
+        if finding not in {'confirmed', 'false_alert', 'inconclusive'}:
+            raise ValueError('Choose a valid human review finding.')
+        reviewer = self._check_reviewer(reviewer)
+        notes = notes.strip()
+        if not 8 <= len(notes) <= 1000:
+            raise ValueError('Review notes must be between 8 and 1000 characters.')
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
+            if not incident:
+                return None
+            old_status = incident['status']
+            if old_status not in {'Open', 'Review'}:
+                raise ValueError('Reopen this incident before recording another review.')
+            conn.execute("UPDATE incidents SET status='Review' WHERE id=?", (incident_id,))
+            conn.execute('''
+                INSERT INTO incident_reviews
+                    (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
+                VALUES (?, 'review', ?, ?, ?, ?, 'Review', ?)
+            ''', (incident_id, finding, reviewer, notes, old_status, utc_now()))
+        return self.review_history(incident_id)
+
+    def review_action(self, incident_id: int, *, action: str, reviewer: str,
+                      notes: str = '') -> dict | None:
+        statuses = {'start': 'Review', 'resolve': 'Resolved',
+                    'dismiss': 'Dismissed', 'reopen': 'Review'}
+        if action not in statuses:
+            raise ValueError('Invalid review action.')
+        reviewer = self._check_reviewer(reviewer)
+        notes = notes.strip()
+        if len(notes) > 1000:
+            raise ValueError('Action notes must be at most 1000 characters.')
+        with self.connect() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
+            if not incident:
+                return None
+            old_status = incident['status']
+            if action == 'start' and old_status != 'Open':
+                raise ValueError('Only open incidents can start a review.')
+            if action in {'resolve', 'dismiss'}:
+                if old_status != 'Review':
+                    raise ValueError('The incident must be Under Review before it can be closed.')
+                events = conn.execute('''
+                    SELECT action, finding, from_status, to_status FROM incident_reviews
+                    WHERE incident_id=? ORDER BY id DESC
+                ''', (incident_id,)).fetchall()
+                finding = None
+                for event in events:
+                    if event['action'] == 'reopen' or (
+                        event['action'] == 'status_changed'
+                        and event['from_status'] in {'Resolved', 'Dismissed'}
+                        and event['to_status'] in {'Open', 'Review'}
+                    ):
+                        break
+                    if event['action'] == 'review':
+                        finding = event['finding']
+                        break
+                required = 'confirmed' if action == 'resolve' else 'false_alert'
+                if finding != required:
+                    raise ValueError('Save the matching human review finding first.')
+                if action == 'resolve' and len(notes) < 8:
+                    raise ValueError('Describe the corrective action (at least 8 characters).')
+            if action == 'reopen' and old_status not in {'Resolved', 'Dismissed'}:
+                raise ValueError('Only resolved or dismissed incidents can be reopened.')
+            status = statuses[action]
+            conn.execute('UPDATE incidents SET status=? WHERE id=?', (status, incident_id))
+            if action in {'resolve', 'dismiss'}:
+                conn.execute('DELETE FROM notifications WHERE incident_id=?', (incident_id,))
+            conn.execute('''
+                INSERT INTO incident_reviews
+                    (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
+                VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
+            ''', (incident_id, action, reviewer, notes, old_status, status, utc_now()))
+        return self.review_history(incident_id)
 
     def mark_notification(self, notification_id: int, is_read: bool = True) -> bool:
         with self.connect() as conn:
@@ -383,10 +530,181 @@ class PPEStore:
         with self.connect() as conn:
             rows = conn.execute('''
                 SELECT id, analyzed_at, overall_status, video_seconds, evidence_url,
-                       model, helmet_violation, vest_violation, boots_violation
+                       model, helmet_violation, vest_violation, boots_violation,
+                       worker_count, result_json
                 FROM analyses WHERE incident_id = ? ORDER BY id ASC
             ''', (incident_id,)).fetchall()
-        return [dict(row) for row in rows]
+        frames = []
+        for row in rows:
+            frame = dict(row)
+            raw_result = frame.pop('result_json', None)
+            try:
+                result = json.loads(raw_result) if raw_result else {}
+            except (TypeError, ValueError):
+                result = {}
+            warnings = result.get('validation_warnings', []) if isinstance(result, dict) else []
+            frame['validation_warnings'] = warnings if isinstance(warnings, list) else []
+            # The original model response is retained in SQLite. Expose only the
+            # individual fields needed for evidence review, including on older
+            # records that have no saved worker list.
+            saved_workers = result.get('workers') if isinstance(result, dict) else None
+            workers = []
+            if isinstance(saved_workers, list):
+                for worker in saved_workers[:30]:
+                    if not isinstance(worker, dict):
+                        continue
+                    position = worker.get('position')
+                    if not isinstance(position, str) or not position.strip():
+                        position = f'Worker {len(workers) + 1}'
+                    position = position.strip()[:120]
+
+                    def ppe_status(item):
+                        value = worker.get(item)
+                        if not isinstance(value, str):
+                            return None
+                        value = value.strip().lower()
+                        return value if value in {'worn', 'missing', 'unclear'} else None
+
+                    workers.append({
+                        'position': position,
+                        'helmet': ppe_status('helmet'),
+                        'vest': ppe_status('vest'),
+                        'boots': ppe_status('boots'),
+                    })
+            frame['workers'] = workers
+            frames.append(frame)
+        return frames
+
+    def incident_for_report(self, incident_id: int) -> dict | None:
+        """Return saved incident metadata without changing its review state."""
+        with self.connect() as conn:
+            row = conn.execute(
+                'SELECT * FROM incidents WHERE id = ?', (incident_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def analytics(self, period: str = '7', location: str = '',
+                  *, reference_time: datetime | None = None) -> dict:
+        """Aggregate saved model attempts, not incidents or verified safety findings.
+
+        A video can create many analysis rows but only one incident. All grouping
+        and period boundaries use Singapore calendar dates (UTC+8).
+        """
+        if period not in {'7', '30', 'all'}:
+            raise ValueError('Invalid analytics period.')
+        today = (reference_time or datetime.now(SGT)).astimezone(SGT).date()
+        clauses, params = [], []
+        if period != 'all':
+            start_day = today - timedelta(days=int(period) - 1)
+            start_utc = datetime.combine(start_day, datetime.min.time(), SGT).astimezone(timezone.utc)
+            clauses.append('analyzed_at >= ?')
+            params.append(start_utc.isoformat())
+        if location and location != 'All locations':
+            clauses.append('location = ?')
+            params.append(location)
+        where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        review_sql = "overall_status IN ('unclear', 'boots_unverified', 'error')"
+        unclear_sql = "overall_status IN ('unclear', 'boots_unverified')"
+
+        with self.connect() as conn:
+            locations_available = [row['location'] for row in conn.execute('''
+                SELECT DISTINCT location FROM analyses ORDER BY location COLLATE NOCASE
+            ''').fetchall()]
+            summary = conn.execute(f'''
+                SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violations,
+                       SUM(CASE WHEN {review_sql} THEN 1 ELSE 0 END) AS needs_review,
+                       AVG(CASE WHEN processing_seconds >= 0 THEN processing_seconds END) AS avg_seconds,
+                       MIN(date(analyzed_at, '+8 hours')) AS first_day,
+                       SUM(CASE WHEN helmet_violation='yes' THEN 1 ELSE 0 END) AS helmets,
+                       SUM(CASE WHEN vest_violation='yes' THEN 1 ELSE 0 END) AS vests,
+                       SUM(CASE WHEN boots_violation='yes' THEN 1 ELSE 0 END) AS boots,
+                       SUM(CASE WHEN overall_status NOT IN ('error', 'no_workers')
+                                     AND (helmet_violation='unclear'
+                                          OR vest_violation='unclear'
+                                          OR boots_violation='unclear')
+                                THEN 1 ELSE 0 END) AS unclear_ppe
+                FROM analyses {where}
+            ''', params).fetchone()
+
+            bucket = "strftime('%Y-%m', analyzed_at, '+8 hours')" if period == 'all' else "date(analyzed_at, '+8 hours')"
+            daily = conn.execute(f'''
+                SELECT {bucket} AS bucket,
+                       SUM(CASE WHEN overall_status='compliant' THEN 1 ELSE 0 END) AS compliant,
+                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violation,
+                       SUM(CASE WHEN {unclear_sql} THEN 1 ELSE 0 END) AS unclear,
+                       SUM(CASE WHEN overall_status NOT IN
+                                 ('compliant', 'violation', 'unclear', 'boots_unverified')
+                                THEN 1 ELSE 0 END) AS other
+                FROM analyses {where}
+                GROUP BY {bucket} ORDER BY bucket
+            ''', params).fetchall()
+            places = conn.execute(f'''
+                SELECT location, COUNT(*) AS total,
+                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violations
+                FROM analyses {where}
+                GROUP BY location ORDER BY total DESC, location COLLATE NOCASE
+            ''', params).fetchall()
+            models = conn.execute(f'''
+                SELECT model, COUNT(*) AS total,
+                       AVG(CASE WHEN processing_seconds >= 0 THEN processing_seconds END) AS avg_seconds,
+                       SUM(CASE WHEN {review_sql} THEN 1 ELSE 0 END) AS needs_review
+                FROM analyses {where}
+                GROUP BY model ORDER BY total DESC, model COLLATE NOCASE
+            ''', params).fetchall()
+
+        seen = {row['bucket']: row for row in daily}
+        trend = []
+        if period == 'all':
+            # Monthly buckets avoid unreadable hundreds-of-day charts.
+            first = summary['first_day']
+            if first:
+                year, month = map(int, first[:7].split('-'))
+                while (year, month) <= (today.year, today.month):
+                    key = f'{year:04d}-{month:02d}'
+                    row = seen.get(key)
+                    trend.append({'bucket': key, 'label': datetime(year, month, 1).strftime('%b %Y'),
+                                  **{k: int(row[k] or 0) if row else 0
+                                     for k in ('compliant', 'violation', 'unclear', 'other')}})
+                    year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+        else:
+            for offset in range(int(period) - 1, -1, -1):
+                day = today - timedelta(days=offset)
+                key = day.isoformat()
+                row = seen.get(key)
+                trend.append({'bucket': key, 'label': day.strftime('%d %b'),
+                              **{k: int(row[k] or 0) if row else 0
+                                 for k in ('compliant', 'violation', 'unclear', 'other')}})
+
+        total = int(summary['total'] or 0)
+        return {
+            'period': period, 'location': location or 'All locations',
+            'locations': locations_available,
+            'summary': {
+                'total': total,
+                'violations': int(summary['violations'] or 0),
+                'needsReview': int(summary['needs_review'] or 0),
+                'avgSeconds': round(summary['avg_seconds'], 1) if summary['avg_seconds'] is not None else None,
+            },
+            'bucketType': 'month' if period == 'all' else 'day',
+            'trend': trend,
+            'categories': [
+                {'name': 'Helmet', 'count': int(summary['helmets'] or 0)},
+                {'name': 'Safety vest', 'count': int(summary['vests'] or 0)},
+                {'name': 'Boots', 'count': int(summary['boots'] or 0)},
+                {'name': 'Unclear PPE', 'count': int(summary['unclear_ppe'] or 0)},
+            ],
+            'locationComparison': [{
+                'location': row['location'], 'total': int(row['total']),
+                'violations': int(row['violations'] or 0),
+                'violationRate': round(100 * (row['violations'] or 0) / row['total'], 1),
+            } for row in places],
+            'modelComparison': [{
+                'model': row['model'], 'total': int(row['total']),
+                'avgSeconds': round(row['avg_seconds'], 1) if row['avg_seconds'] is not None else None,
+                'needsReview': int(row['needs_review'] or 0),
+            } for row in models],
+        }
 
     def state(self) -> dict:
         with self.connect() as conn:

@@ -1,0 +1,723 @@
+diff --git a/backend/main.py b/backend/main.py
+index b909dfc..ac03aa4 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -15,7 +15,7 @@ from typing import Literal
+ from urllib.parse import urlparse
+ from uuid import uuid4
+ 
+-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
++from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
+ from fastapi.responses import FileResponse
+ import httpx
+ from PIL import Image, ImageOps, UnidentifiedImageError
+@@ -362,6 +362,13 @@ def dashboard_state():
+     return STORE.state()
+ 
+ 
++@app.get('/api/analytics')
++def monitoring_analytics(period: Literal['7', '30', 'all'] = '7',
++                         location: str = Query(default='All locations', max_length=100)):
++    """Aggregate SQLite analysis attempts for monitoring, never model accuracy."""
++    return STORE.analytics(period=period, location=location)
++
++
+ class IncidentStatusChange(BaseModel):
+     status: Literal['Open', 'Review', 'Resolved', 'Dismissed']
+ 
+diff --git a/backend/storage.py b/backend/storage.py
+index bf22c44..ae12c8d 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -118,6 +118,7 @@ class PPEStore:
+                 );
+                 CREATE INDEX IF NOT EXISTS ix_analyses_incident ON analyses(incident_id);
+                 CREATE INDEX IF NOT EXISTS ix_analyses_status_time ON analyses(overall_status, analyzed_at);
++                CREATE INDEX IF NOT EXISTS ix_analyses_time_location ON analyses(analyzed_at, location);
+                 CREATE TABLE IF NOT EXISTS notifications (
+                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                     incident_id INTEGER NOT NULL UNIQUE REFERENCES incidents(id),
+@@ -399,6 +400,129 @@ class PPEStore:
+             frames.append(frame)
+         return frames
+ 
++    def analytics(self, period: str = '7', location: str = '',
++                  *, reference_time: datetime | None = None) -> dict:
++        """Aggregate saved model attempts, not incidents or verified safety findings.
++
++        A video can create many analysis rows but only one incident. All grouping
++        and period boundaries use Singapore calendar dates (UTC+8).
++        """
++        if period not in {'7', '30', 'all'}:
++            raise ValueError('Invalid analytics period.')
++        today = (reference_time or datetime.now(SGT)).astimezone(SGT).date()
++        clauses, params = [], []
++        if period != 'all':
++            start_day = today - timedelta(days=int(period) - 1)
++            start_utc = datetime.combine(start_day, datetime.min.time(), SGT).astimezone(timezone.utc)
++            clauses.append('analyzed_at >= ?')
++            params.append(start_utc.isoformat())
++        if location and location != 'All locations':
++            clauses.append('location = ?')
++            params.append(location)
++        where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
++        review_sql = "overall_status IN ('unclear', 'boots_unverified', 'error')"
++        unclear_sql = "overall_status IN ('unclear', 'boots_unverified')"
++
++        with self.connect() as conn:
++            locations_available = [row['location'] for row in conn.execute('''
++                SELECT DISTINCT location FROM analyses ORDER BY location COLLATE NOCASE
++            ''').fetchall()]
++            summary = conn.execute(f'''
++                SELECT COUNT(*) AS total,
++                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violations,
++                       SUM(CASE WHEN {review_sql} THEN 1 ELSE 0 END) AS needs_review,
++                       AVG(CASE WHEN processing_seconds >= 0 THEN processing_seconds END) AS avg_seconds,
++                       MIN(date(analyzed_at, '+8 hours')) AS first_day,
++                       SUM(CASE WHEN helmet_violation='yes' THEN 1 ELSE 0 END) AS helmets,
++                       SUM(CASE WHEN vest_violation='yes' THEN 1 ELSE 0 END) AS vests,
++                       SUM(CASE WHEN boots_violation='yes' THEN 1 ELSE 0 END) AS boots,
++                       SUM(CASE WHEN overall_status NOT IN ('error', 'no_workers')
++                                     AND (helmet_violation='unclear'
++                                          OR vest_violation='unclear'
++                                          OR boots_violation='unclear')
++                                THEN 1 ELSE 0 END) AS unclear_ppe
++                FROM analyses {where}
++            ''', params).fetchone()
++
++            bucket = "strftime('%Y-%m', analyzed_at, '+8 hours')" if period == 'all' else "date(analyzed_at, '+8 hours')"
++            daily = conn.execute(f'''
++                SELECT {bucket} AS bucket,
++                       SUM(CASE WHEN overall_status='compliant' THEN 1 ELSE 0 END) AS compliant,
++                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violation,
++                       SUM(CASE WHEN {unclear_sql} THEN 1 ELSE 0 END) AS unclear,
++                       SUM(CASE WHEN overall_status NOT IN
++                                 ('compliant', 'violation', 'unclear', 'boots_unverified')
++                                THEN 1 ELSE 0 END) AS other
++                FROM analyses {where}
++                GROUP BY {bucket} ORDER BY bucket
++            ''', params).fetchall()
++            places = conn.execute(f'''
++                SELECT location, COUNT(*) AS total,
++                       SUM(CASE WHEN overall_status='violation' THEN 1 ELSE 0 END) AS violations
++                FROM analyses {where}
++                GROUP BY location ORDER BY total DESC, location COLLATE NOCASE
++            ''', params).fetchall()
++            models = conn.execute(f'''
++                SELECT model, COUNT(*) AS total,
++                       AVG(CASE WHEN processing_seconds >= 0 THEN processing_seconds END) AS avg_seconds,
++                       SUM(CASE WHEN {review_sql} THEN 1 ELSE 0 END) AS needs_review
++                FROM analyses {where}
++                GROUP BY model ORDER BY total DESC, model COLLATE NOCASE
++            ''', params).fetchall()
++
++        seen = {row['bucket']: row for row in daily}
++        trend = []
++        if period == 'all':
++            # Monthly buckets avoid unreadable hundreds-of-day charts.
++            first = summary['first_day']
++            if first:
++                year, month = map(int, first[:7].split('-'))
++                while (year, month) <= (today.year, today.month):
++                    key = f'{year:04d}-{month:02d}'
++                    row = seen.get(key)
++                    trend.append({'bucket': key, 'label': datetime(year, month, 1).strftime('%b %Y'),
++                                  **{k: int(row[k] or 0) if row else 0
++                                     for k in ('compliant', 'violation', 'unclear', 'other')}})
++                    year, month = (year + 1, 1) if month == 12 else (year, month + 1)
++        else:
++            for offset in range(int(period) - 1, -1, -1):
++                day = today - timedelta(days=offset)
++                key = day.isoformat()
++                row = seen.get(key)
++                trend.append({'bucket': key, 'label': day.strftime('%d %b'),
++                              **{k: int(row[k] or 0) if row else 0
++                                 for k in ('compliant', 'violation', 'unclear', 'other')}})
++
++        total = int(summary['total'] or 0)
++        return {
++            'period': period, 'location': location or 'All locations',
++            'locations': locations_available,
++            'summary': {
++                'total': total,
++                'violations': int(summary['violations'] or 0),
++                'needsReview': int(summary['needs_review'] or 0),
++                'avgSeconds': round(summary['avg_seconds'], 1) if summary['avg_seconds'] is not None else None,
++            },
++            'bucketType': 'month' if period == 'all' else 'day',
++            'trend': trend,
++            'categories': [
++                {'name': 'Helmet', 'count': int(summary['helmets'] or 0)},
++                {'name': 'Safety vest', 'count': int(summary['vests'] or 0)},
++                {'name': 'Boots', 'count': int(summary['boots'] or 0)},
++                {'name': 'Unclear PPE', 'count': int(summary['unclear_ppe'] or 0)},
++            ],
++            'locationComparison': [{
++                'location': row['location'], 'total': int(row['total']),
++                'violations': int(row['violations'] or 0),
++                'violationRate': round(100 * (row['violations'] or 0) / row['total'], 1),
++            } for row in places],
++            'modelComparison': [{
++                'model': row['model'], 'total': int(row['total']),
++                'avgSeconds': round(row['avg_seconds'], 1) if row['avg_seconds'] is not None else None,
++                'needsReview': int(row['needs_review'] or 0),
++            } for row in models],
++        }
++
+     def state(self) -> dict:
+         with self.connect() as conn:
+             incidents = conn.execute('''
+diff --git a/backend/tests/test_analytics.py b/backend/tests/test_analytics.py
+new file mode 100644
+index 0000000..4b24251
+--- /dev/null
++++ b/backend/tests/test_analytics.py
+@@ -0,0 +1,124 @@
++"""Stage 3 monitoring analytics: counts come from saved analyses, not incidents."""
++
++import sys
++import tempfile
++import unittest
++from datetime import datetime, timedelta, timezone
++from pathlib import Path
++from unittest.mock import patch
++
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import main  # noqa: E402
++from storage import PPEStore  # noqa: E402
++
++
++SGT = timezone(timedelta(hours=8))
++REFERENCE = datetime(2026, 11, 20, 12, 0, tzinfo=SGT)
++
++
++class AnalyticsTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.store = PPEStore(Path(self.temp.name) / 'analytics.sqlite3')
++
++    def record(self, date, status, *, location='Tower A', model='qwen',
++               helmet='no', vest='no', boots='no', seconds=4.0, session=''):
++        stamp = datetime.fromisoformat(date).astimezone(timezone.utc).isoformat()
++        return self.store.save_analysis({
++            'analyzed_at': stamp, 'overall_status': status, 'model': model,
++            'helmet_violation': helmet, 'vest_violation': vest,
++            'boots_violation': boots, 'worker_count': 1,
++            'processing_seconds': seconds, 'location': location,
++            'camera': 'UPLOAD',
++        }, video_session_id=session, video_name='test.mp4' if session else '')
++
++    def populate(self):
++        self.record('2026-11-20T09:00:00+08:00', 'violation', helmet='yes', vest='yes', seconds=8.0)
++        self.record('2026-11-19T09:00:00+08:00', 'compliant', seconds=4.0)
++        self.record('2026-11-14T00:00:00+08:00', 'boots_unverified',
++                    location='Warehouse', model='mini', boots='unclear', seconds=6.0)
++        self.record('2026-11-13T23:59:00+08:00', 'violation',
++                    location='Warehouse', model='mini', boots='yes', seconds=5.0)
++        self.record('2026-11-18T09:00:00+08:00', 'unclear',
++                    model='mini', vest='unclear', seconds=7.0)
++        self.record('2026-11-20T09:10:00+08:00', 'error',
++                    location='Warehouse', seconds=3.0)
++        self.record('2026-11-20T09:15:00+08:00', 'no_workers',
++                    helmet='unclear', vest='unclear', boots='unclear', seconds=2.0)
++
++    def test_week_includes_singapore_midnight_not_previous_day(self):
++        self.populate()
++        result = self.store.analytics('7', reference_time=REFERENCE)
++        self.assertEqual(result['summary'], {
++            'total': 6, 'violations': 1, 'needsReview': 3, 'avgSeconds': 5.0,
++        })
++        self.assertEqual(len(result['trend']), 7)
++        self.assertEqual(result['trend'][0]['bucket'], '2026-11-14')
++        self.assertEqual(result['trend'][-1]['bucket'], '2026-11-20')
++        self.assertEqual(sum(day['violation'] for day in result['trend']), 1)
++        self.assertEqual(sum(day['unclear'] for day in result['trend']), 2)
++        self.assertEqual(sum(day['other'] for day in result['trend']), 2)
++
++    def test_multiple_ppe_categories_and_unverified_exclusion(self):
++        self.populate()
++        result = self.store.analytics('7', reference_time=REFERENCE)
++        by_name = {row['name']: row['count'] for row in result['categories']}
++        self.assertEqual(by_name, {
++            'Helmet': 1, 'Safety vest': 1, 'Boots': 0, 'Unclear PPE': 2,
++        })
++
++    def test_location_filter_changes_all_analytics_tables(self):
++        self.populate()
++        result = self.store.analytics('7', 'Warehouse', reference_time=REFERENCE)
++        self.assertEqual(result['summary']['total'], 2)
++        self.assertEqual(result['summary']['violations'], 0)
++        self.assertEqual(len(result['locationComparison']), 1)
++        self.assertEqual(result['locationComparison'][0]['location'], 'Warehouse')
++        self.assertEqual({row['model'] for row in result['modelComparison']}, {'qwen', 'mini'})
++        self.assertEqual(result['locations'], ['Tower A', 'Warehouse'])
++
++    def test_thirty_days_and_all_time(self):
++        self.populate()
++        self.record('2026-10-20T09:00:00+08:00', 'compliant')
++        last_30 = self.store.analytics('30', reference_time=REFERENCE)
++        all_time = self.store.analytics('all', reference_time=REFERENCE)
++        self.assertEqual(last_30['summary']['total'], 7)
++        self.assertEqual(last_30['summary']['violations'], 2)
++        self.assertEqual(len(last_30['trend']), 30)
++        self.assertEqual(all_time['summary']['total'], 8)
++        self.assertEqual(all_time['bucketType'], 'month')
++        self.assertEqual([row['bucket'] for row in all_time['trend']], ['2026-10', '2026-11'])
++
++    def test_multiple_frames_are_not_counted_as_unique_incidents(self):
++        self.record('2026-11-20T09:00:00+08:00', 'violation',
++                    helmet='yes', session='video-1')
++        self.record('2026-11-20T09:01:00+08:00', 'compliant', session='video-1')
++        result = self.store.analytics('7', reference_time=REFERENCE)
++        self.assertEqual(result['summary']['total'], 2)
++        self.assertEqual(len(self.store.state()['items']), 1)
++
++    def test_empty_period_and_invalid_period(self):
++        result = self.store.analytics('7', reference_time=REFERENCE)
++        self.assertEqual(result['summary']['total'], 0)
++        self.assertIsNone(result['summary']['avgSeconds'])
++        self.assertEqual(len(result['trend']), 7)
++        self.assertEqual(result['modelComparison'], [])
++        with self.assertRaises(ValueError):
++            self.store.analytics('tomorrow', reference_time=REFERENCE)
++
++    def test_fastapi_route_and_invalid_period_validation(self):
++        self.record('2026-11-20T09:00:00+08:00', 'violation', helmet='yes')
++        with patch.object(main, 'STORE', self.store):
++            client = TestClient(main.app)
++            response = client.get('/api/analytics', params={'period': 'all'})
++            invalid = client.get('/api/analytics', params={'period': 'invalid'})
++        self.assertEqual(response.status_code, 200)
++        self.assertEqual(response.json()['summary']['total'], 1)
++        self.assertEqual(invalid.status_code, 422)
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/my-app/src/App.css b/my-app/src/App.css
+index 528f6e1..1c426b1 100644
+--- a/my-app/src/App.css
++++ b/my-app/src/App.css
+@@ -1285,3 +1285,196 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
+     width: 100%;
+   }
+ }
++
++/* Stage 3: SQLite-backed monitoring analytics. */
++.ppe-monitoring-page { min-width: 0; }
++.ppe-monitoring-heading {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  flex-wrap: wrap;
++  gap: 12px;
++  margin-bottom: 16px;
++}
++.ppe-monitoring-heading h2 { margin: 0 0 7px; font-size: 25px; letter-spacing: -.6px; }
++.ppe-monitoring-heading .eyebrow { margin-bottom: 7px; }
++.ppe-analytics-badge {
++  flex-shrink: 0;
++  font-size: 11px;
++  font-weight: 700;
++  border-radius: 20px;
++  padding: 6px 10px;
++  color: #26734f;
++  background: #eaf7ee;
++  border: 1px solid #c9e6d3;
++}
++.ppe-monitoring-notice {
++  margin: 0 0 20px;
++  padding: 13px 15px;
++  border-radius: 10px;
++  border: 1px solid #c5e0f5;
++  border-left: 4px solid #6aabcd;
++  background: #eff8ff;
++  color: #365b77;
++  font-size: 12px;
++  line-height: 1.65;
++}
++.ppe-analytics-controls {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-end;
++  flex-wrap: wrap;
++  gap: 15px;
++  margin-bottom: 20px;
++}
++.ppe-analytics-control-label {
++  display: block;
++  margin-bottom: 7px;
++  color: #698295;
++  font-size: 11px;
++  font-weight: 800;
++  letter-spacing: .5px;
++}
++.ppe-analytics-periods {
++  display: inline-flex;
++  gap: 3px;
++  padding: 4px;
++  border: 1px solid #d5e3eb;
++  border-radius: 11px;
++  background: #eaf0f4;
++}
++.ppe-analytics-periods button {
++  padding: 9px 13px;
++  border: 0;
++  border-radius: 8px;
++  background: transparent;
++  color: #617d91;
++  font-size: 12px;
++  font-weight: 750;
++  white-space: nowrap;
++}
++.ppe-analytics-periods button.selected {
++  background: #fff;
++  color: #166842;
++  box-shadow: 0 2px 6px #1d3e5718;
++}
++.ppe-analytics-periods button:focus-visible,
++.ppe-analytics-controls select:focus-visible,
++.ppe-analytics-reload:focus-visible {
++  outline: 2px solid #16a34a;
++  outline-offset: 2px;
++}
++.ppe-analytics-control-right { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
++.ppe-analytics-controls select {
++  width: min(250px, 100%);
++  min-width: 170px;
++  height: 42px;
++  padding: 9px 11px;
++  border: 1px solid #cbdbe5;
++  border-radius: 9px;
++  color: #314e62;
++  background: #fff;
++  font-size: 12px;
++  font-weight: 650;
++}
++.ppe-analytics-reload {
++  height: 42px;
++  padding: 9px 13px;
++  color: #27774e;
++  background: #f8fcfa;
++  border: 1px solid #9ac8ae;
++  border-radius: 9px;
++  font-size: 12px;
++  font-weight: 750;
++}
++.ppe-analytics-loading { padding: 25px; text-align: center; }
++.ppe-analytics-error {
++  margin-bottom: 18px;
++  padding: 12px 15px;
++  color: #9f2f2f;
++  background: #fff1f1;
++  border: 1px solid #f7c6c6;
++  border-radius: 9px;
++}
++.ppe-analytics-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; margin-bottom: 18px; }
++.ppe-analytics-metric {
++  min-width: 0;
++  min-height: 130px;
++  padding: 18px 19px;
++  background: #fff;
++  border: 1px solid #e1eaf0;
++  box-shadow: 0 3px 15px #1e344208;
++  border-radius: 13px;
++}
++.ppe-analytics-metric p { color: #748b9a; font-size: 12px; font-weight: 650; margin: 0 0 12px; }
++.ppe-analytics-metric strong { display: block; font-size: 29px; letter-spacing: -1px; color: #203d50; }
++.ppe-analytics-metric small { display: block; margin-top: 9px; font-size: 11px; line-height: 1.5; color: #8299a9; }
++.ppe-analytics-upper-grid { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(295px,.85fr); gap: 17px; }
++.ppe-analytics-lower-grid { display: grid; grid-template-columns: minmax(0,1.07fr) minmax(0,.93fr); gap: 17px; margin-top: 17px; }
++.ppe-analytics-panel { min-width: 0; margin-bottom: 0; }
++.ppe-analytics-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
++.ppe-analytics-panel-head h2 { font-size: 17px; margin: 0 0 6px; }
++.ppe-analytics-panel-head .muted { margin: 0; font-size: 11px; }
++.ppe-analytics-trend-chart { width: 100%; height: 290px; margin-top: 20px; }
++.ppe-analytics-empty { padding: 42px 8px; text-align: center; }
++.ppe-analytics-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 9px; color: #647b8d; font-size: 11px; }
++.ppe-analytics-legend span { display: inline-flex; align-items: center; gap: 6px; }
++.ppe-analytics-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
++.ppe-analytics-legend i.compliant { background: #52af83; }
++.ppe-analytics-legend i.violation { background: #ef806f; }
++.ppe-analytics-legend i.unclear { background: #e9b55d; }
++.ppe-analytics-legend i.other { background: #95abbc; }
++.ppe-analytics-category-list { display: grid; gap: 21px; margin-top: 25px; }
++.ppe-analytics-category > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 12px; font-weight: 700; }
++.ppe-analytics-category strong { font-size: 14px; }
++.ppe-analytics-category-track { overflow: hidden; height: 10px; background: #edf2f6; border-radius: 99px; }
++.ppe-analytics-category-track > span { display: block; height: 100%; border-radius: 99px; background: #57a98a; }
++.ppe-analytics-category:nth-child(2) .ppe-analytics-category-track > span { background: #80a7d3; }
++.ppe-analytics-category:nth-child(3) .ppe-analytics-category-track > span { background: #d5a869; }
++.ppe-analytics-category:nth-child(4) .ppe-analytics-category-track > span { background: #b9a2ce; }
++.ppe-analytics-explainer { margin: 24px 0 0; padding: 12px 13px; background: #f6f9fb; border: 1px solid #e2edf2; border-radius: 9px; color: #647e8c; font-size: 11px; line-height: 1.6; }
++.ppe-analytics-table-wrap { width: 100%; overflow-x: auto; margin-top: 17px; }
++.ppe-analytics-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
++.ppe-analytics-table-wrap th { background: transparent; text-align: left; border-bottom: 1px solid #e4ecf2; color: #8499a8; font-size: 10px; letter-spacing: .3px; text-transform: uppercase; white-space: nowrap; padding: 11px 8px; }
++.ppe-analytics-table-wrap td { border-bottom: 1px solid #edf2f5; padding: 13px 8px; font-size: 12px; }
++.ppe-analytics-table-wrap tr:last-child td { border-bottom: 0; }
++.ppe-analytics-table-wrap td strong { color: #2b485b; overflow-wrap: anywhere; }
++.ppe-analytics-rate { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
++.ppe-analytics-rate > i { display: inline-block; width: 58px; height: 7px; border-radius: 99px; overflow: hidden; background: #e8eff3; }
++.ppe-analytics-rate > i > span { display: block; height: 100%; background: #5cad86; }
++.ppe-analytics-disclaimer { margin: 20px 0 0; font-size: 11px; line-height: 1.6; }
++
++.ppe-app-shell.dark-theme .ppe-analytics-badge { color: #9ae6bb; background: #193a32; border-color: #356c4f; }
++.ppe-app-shell.dark-theme .ppe-monitoring-notice { color: #c0d9e9; background: #192f43; border-color: #355972; }
++.ppe-app-shell.dark-theme .ppe-analytics-control-label { color: #b4c8df; }
++.ppe-app-shell.dark-theme .ppe-analytics-periods { background: #192b40; border-color: #36516e; }
++.ppe-app-shell.dark-theme .ppe-analytics-periods button { color: #b4c8df; }
++.ppe-app-shell.dark-theme .ppe-analytics-periods button.selected { background: #214b3c; color: #b4f5cc; }
++.ppe-app-shell.dark-theme .ppe-analytics-controls select,
++.ppe-app-shell.dark-theme .ppe-analytics-reload { color: #e2e8f0; background: #192b40; border-color: #46617f; }
++.ppe-app-shell.dark-theme .ppe-analytics-metric { background: #14243a; border-color: #36516e; }
++.ppe-app-shell.dark-theme .ppe-analytics-metric p,
++.ppe-app-shell.dark-theme .ppe-analytics-metric small { color: #a8bbd0; }
++.ppe-app-shell.dark-theme .ppe-analytics-metric strong,
++.ppe-app-shell.dark-theme .ppe-analytics-table-wrap td strong { color: #e2e8f0; }
++.ppe-app-shell.dark-theme .ppe-analytics-table-wrap th,
++.ppe-app-shell.dark-theme .ppe-analytics-table-wrap td { border-color: #2b4058; }
++.ppe-app-shell.dark-theme .ppe-analytics-explainer { color: #b4c8df; background: #1a334c; border-color: #35516d; }
++.ppe-app-shell.dark-theme .ppe-analytics-category-track,
++.ppe-app-shell.dark-theme .ppe-analytics-rate > i { background: #2b4058; }
++.ppe-app-shell.dark-theme .ppe-analytics-legend { color: #b4c8df; }
++
++@media (max-width: 1220px) {
++  .ppe-analytics-upper-grid, .ppe-analytics-lower-grid { grid-template-columns: 1fr; }
++  .ppe-analytics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
++}
++@media (max-width: 620px) {
++  .ppe-monitoring-heading h2 { font-size: 21px; }
++  .ppe-analytics-periods { display: flex; width: 100%; }
++  .ppe-analytics-periods button { flex: 1; padding: 10px 7px; font-size: 11px; }
++  .ppe-analytics-controls, .ppe-analytics-control-right, .ppe-analytics-control-right label { width: 100%; }
++  .ppe-analytics-controls select { width: 100%; }
++  .ppe-analytics-metric { min-height: 116px; padding: 14px; }
++  .ppe-analytics-metric strong { font-size: 24px; }
++  .ppe-analytics-trend-chart { height: 245px; }
++}
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index 91d0b79..8018108 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -1,5 +1,5 @@
+ import { useCallback, useEffect, useRef, useState } from "react";
+-import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
++import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar } from "recharts";
+ import "./App.css";
+ import AnalysisUpload from "./AnalysisUpload";
+ 
+@@ -379,6 +379,7 @@ function reviewIcon(value) {
+             ['analysis', 'AI analysis'],
+             ['incidents', 'Incident management'],
+             ['history', 'Incident history'],
++            ['analytics', 'Monitoring analytics'],
+           ].map(([id, label]) => (
+             <button
+               key={id}
+@@ -482,6 +483,8 @@ function reviewIcon(value) {
+         </>
+       )}
+ 
++      {activePage === 'analytics' && <MonitoringAnalytics />}
++
+       {activePage === 'incidents' && (
+       <section className="panel"><div className="table-heading"><div><h2>Incident management</h2><p className="muted">Open and under-review incidents only. Archive using X to preserve records in history.</p></div><select aria-label="Filter incidents" value={filter} onChange={(e) => setFilter(e.target.value)}>{["All", "Open", "Review"].map((status) => <option key={status}>{status}</option>)}</select></div>
+         <IncidentFilters
+@@ -889,4 +892,194 @@ function IncidentFilters({ search, onSearch, severity, onSeverity, ppe, onPpe, s
+     </div>
+   );
+ }
++
++function MonitoringAnalytics() {
++  const [period, setPeriod] = useState('7');
++  const [location, setLocation] = useState('All locations');
++  const [refreshKey, setRefreshKey] = useState(0);
++  const [analytics, setAnalytics] = useState(null);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState('');
++
++  useEffect(() => {
++    let cancelled = false;
++    let refreshing = false;
++    setAnalytics(null);
++    setLoading(true);
++    setError('');
++    async function loadAnalytics() {
++      if (refreshing || document.hidden) return;
++      refreshing = true;
++      try {
++        const query = new URLSearchParams({ period, location });
++        const result = await apiJson(`/api/analytics?${query}`);
++        if (!cancelled) {
++          setAnalytics(result);
++          setError('');
++        }
++      } catch (err) {
++        if (!cancelled) setError(`Monitoring analytics could not be loaded: ${err.message}`);
++      } finally {
++        refreshing = false;
++        if (!cancelled) setLoading(false);
++      }
++    }
++    void loadAnalytics();
++    const timer = setInterval(() => { void loadAnalytics(); }, 30000);
++    return () => { cancelled = true; clearInterval(timer); };
++  }, [period, location, refreshKey]);
++
++  const summary = analytics?.summary;
++  const categories = analytics?.categories || [];
++  const categoryMax = Math.max(1, ...categories.map((item) => item.count));
++
++  return (
++    <div className="ppe-monitoring-page">
++      <section className="ppe-monitoring-heading">
++        <div>
++          <p className="eyebrow">MONITORING INSIGHTS</p>
++          <h2>Monitoring analytics</h2>
++          <p className="muted">Identify recurring PPE concerns, compare locations and track model workload.</p>
++        </div>
++        <span className="ppe-analytics-badge">SQLite analysis history</span>
++      </section>
++      <p className="ppe-monitoring-notice">
++        These are model-reported assessments, not verified safety findings or accuracy scores.
++        Each analysed image or video frame counts as one attempt, even when several frames belong to one incident.
++        Earlier browser incidents without saved analyses are excluded.
++      </p>
++
++      <div className="ppe-analytics-controls">
++        <div>
++          <span className="ppe-analytics-control-label">Reporting period</span>
++          <div className="ppe-analytics-periods" role="group" aria-label="Reporting period">
++            {[
++              ['7', 'Last 7 days'], ['30', 'Last 30 days'], ['all', 'All available'],
++            ].map(([value, label]) => (
++              <button key={value} type="button" className={period === value ? 'selected' : ''}
++                aria-pressed={period === value} onClick={() => setPeriod(value)}>{label}</button>
++            ))}
++          </div>
++        </div>
++        <div className="ppe-analytics-control-right">
++          <label>
++            <span className="ppe-analytics-control-label">Location</span>
++            <select value={location} onChange={(event) => setLocation(event.target.value)}>
++              <option value="All locations">All locations</option>
++              {(analytics?.locations || []).filter((name) => name !== 'All locations').map((name) => (
++                <option key={name} value={name}>{name}</option>
++              ))}
++              {location !== 'All locations' && !(analytics?.locations || []).includes(location) && (
++                <option value={location}>{location}</option>
++              )}
++            </select>
++          </label>
++          <button type="button" className="ppe-analytics-reload" onClick={() => setRefreshKey((key) => key + 1)}>
++            Refresh
++          </button>
++        </div>
++      </div>
++
++      {error && <div className="ppe-analytics-error" role="alert">{error}</div>}
++      {loading && <p className="muted ppe-analytics-loading" role="status">Loading saved monitoring data…</p>}
++      {!loading && analytics && (
++        <>
++          <div className="ppe-analytics-metrics">
++            <AnalyticsMetric title="Analysed images / frames" value={summary?.total ?? 0} note="Saved model attempts in period" />
++            <AnalyticsMetric title="Reported PPE violations" value={summary?.violations ?? 0} note="Model-reported; not verified" />
++            <AnalyticsMetric title="Unclear / failed assessments" value={summary?.needsReview ?? 0} note="Includes unverified boots and errors" />
++            <AnalyticsMetric title="Average processing time" value={summary?.avgSeconds == null ? '—' : `${summary.avgSeconds}s`} note="Seconds per saved attempt" />
++          </div>
++
++          <div className="ppe-analytics-upper-grid">
++            <section className="panel ppe-analytics-panel">
++              <div className="ppe-analytics-panel-head">
++                <div><h2>Analysis outcomes over time</h2><p className="muted">{analytics.bucketType === 'month' ? 'Monthly' : 'Daily'} counts by model-reported outcome · Singapore time.</p></div>
++                <span className="ppe-analytics-badge">Per analysis</span>
++              </div>
++              {summary.total > 0 ? (
++                <div className="ppe-analytics-trend-chart">
++                  <ResponsiveContainer width="100%" height="100%">
++                    <BarChart data={analytics.trend} margin={{ top: 18, right: 8, left: -18, bottom: 6 }}>
++                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
++                      <XAxis dataKey="label" tick={{ fontSize: 10 }} minTickGap={12} interval="preserveStartEnd" />
++                      <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
++                      <Tooltip labelFormatter={(_, payload) => payload?.[0]?.payload?.bucket || ''} />
++                      <Bar dataKey="compliant" stackId="outcomes" name="Compliant" fill="#52af83" />
++                      <Bar dataKey="violation" stackId="outcomes" name="Violation" fill="#ef806f" />
++                      <Bar dataKey="unclear" stackId="outcomes" name="Unclear / unverified" fill="#e9b55d" />
++                      <Bar dataKey="other" stackId="outcomes" name="No workers / error" fill="#95abbc" />
++                    </BarChart>
++                  </ResponsiveContainer>
++                </div>
++              ) : <p className="muted ppe-analytics-empty">No saved analyses match this period and location.</p>}
++              <div className="ppe-analytics-legend">
++                <span><i className="compliant" /> Compliant</span>
++                <span><i className="violation" /> Violation</span>
++                <span><i className="unclear" /> Unclear / unverified</span>
++                <span><i className="other" /> No workers / error</span>
++              </div>
++            </section>
++
++            <section className="panel ppe-analytics-panel">
++              <div className="ppe-analytics-panel-head">
++                <div><h2>PPE concern breakdown</h2><p className="muted">Reported missing PPE or ambiguous assessments.</p></div>
++                <span className="ppe-analytics-badge">Categories overlap</span>
++              </div>
++              <div className="ppe-analytics-category-list">
++                {categories.map((item) => (
++                  <div className="ppe-analytics-category" key={item.name}>
++                    <div><span>{item.name}</span><strong>{item.count}</strong></div>
++                    <div className="ppe-analytics-category-track">
++                      <span style={{ width: `${100 * item.count / categoryMax}%` }} />
++                    </div>
++                  </div>
++                ))}
++              </div>
++              <p className="ppe-analytics-explainer">
++                One analysis can flag more than one PPE category. Category totals may exceed the number of violation responses.
++              </p>
++            </section>
++          </div>
++
++          <div className="ppe-analytics-lower-grid">
++            <section className="panel ppe-analytics-panel">
++              <div className="ppe-analytics-panel-head">
++                <div><h2>Location comparison</h2><p className="muted">Reported violations as a share of saved analysis attempts.</p></div>
++              </div>
++              <div className="ppe-analytics-table-wrap">
++                <table><thead><tr><th>Location</th><th>Analyses</th><th>Violations</th><th>Violation rate</th></tr></thead><tbody>
++                  {analytics.locationComparison.map((row) => (
++                    <tr key={row.location}><td><strong>{row.location}</strong></td><td>{row.total}</td><td>{row.violations}</td>
++                      <td><span className="ppe-analytics-rate"><i><span style={{ width: `${row.violationRate}%` }} /></i>{row.violationRate}%</span></td></tr>
++                  ))}
++                  {analytics.locationComparison.length === 0 && <tr><td colSpan="4">No location data for this selection.</td></tr>}
++                </tbody></table>
++              </div>
++            </section>
++            <section className="panel ppe-analytics-panel">
++              <div className="ppe-analytics-panel-head">
++                <div><h2>Model workload &amp; speed</h2><p className="muted">Activity and processing time, not model accuracy.</p></div>
++              </div>
++              <div className="ppe-analytics-table-wrap">
++                <table><thead><tr><th>Model</th><th>Analyses</th><th>Avg. seconds</th><th>Needs review</th></tr></thead><tbody>
++                  {analytics.modelComparison.map((row) => (
++                    <tr key={row.model}><td><strong>{row.model}</strong></td><td>{row.total}</td>
++                      <td>{row.avgSeconds == null ? '—' : `${row.avgSeconds}s`}</td><td>{row.needsReview}</td></tr>
++                  ))}
++                  {analytics.modelComparison.length === 0 && <tr><td colSpan="4">No model data for this selection.</td></tr>}
++                </tbody></table>
++              </div>
++            </section>
++          </div>
++          <p className="muted ppe-analytics-disclaimer">PPE trends are based on saved AI assessments. Verify individual incidents using the original evidence before taking safety action.</p>
++        </>
++      )}
++    </div>
++  );
++}
++
++function AnalyticsMetric({ title, value, note }) {
++  return <article className="ppe-analytics-metric"><p>{title}</p><strong>{value}</strong><small>{note}</small></article>;
++}
+ export default App;

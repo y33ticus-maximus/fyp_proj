@@ -1,0 +1,192 @@
+diff --git a/my-app/src/App.css b/my-app/src/App.css
+index 0975398..cdfcf06 100644
+--- a/my-app/src/App.css
++++ b/my-app/src/App.css
+@@ -1546,6 +1546,46 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
+   font-weight: 750;
+ }
+ 
++/* Evidence requests are independent of the saved incident and review. */
++.ppe-evidence-surface {
++  position: relative;
++  min-height: 160px;
++  width: 100%;
++  border-radius: 10px;
++  overflow: hidden;
++  background: #101b2c;
++}
++.detail-modal .ppe-evidence-surface .ppe-evidence-zoom-trigger:disabled {
++  opacity: 1;
++  cursor: default;
++}
++.ppe-evidence-status {
++  position: absolute;
++  inset: 0;
++  display: flex;
++  flex-direction: column;
++  justify-content: center;
++  align-items: center;
++  gap: 9px;
++  padding: 20px;
++  text-align: center;
++  color: #e9f2fa;
++  background: #172b41;
++  font-size: 13px;
++  line-height: 1.55;
++}
++.ppe-evidence-status p { margin: 0; color: #c5d8e9; }
++.ppe-evidence-status .outline-button {
++  color: #fff;
++  background: #274967;
++  border-color: #668aa7;
++  min-height: 37px;
++}
++.ppe-evidence-status .outline-button:hover { background: #345c80; }
++.ppe-evidence-expanded { width: auto; max-width: 100%; min-width: min(420px, 88vw); }
++.ppe-evidence-lightbox .ppe-evidence-expanded img { max-height: calc(100vh - 180px); }
++.ppe-evidence-lightbox .ppe-evidence-expanded .ppe-evidence-status { min-height: 160px; }
++
+ .detail-modal .ppe-worker-review {
+   margin-top: 24px;
+   padding: 19px;
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index 6658650..c28b31e 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -801,20 +801,13 @@ function workerPpeClass(value) {
+               </h3>
+ 
+               {selectedDetailFrame?.evidence_url ? (
+-                <button
+-                  type="button"
+-                  className="ppe-evidence-zoom-trigger"
+-                  aria-label={`Enlarge evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
+-                  onClick={() => setZoomEvidenceUrl(selectedDetailFrame.evidence_url)}
+-                >
+-                  <img
+-                    className="incident-review-image"
+-                    src={selectedDetailFrame.evidence_url}
+-                    alt={`Evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
+-                    loading="lazy"
+-                  />
+-                  <span className="ppe-evidence-zoom-hint">⤢ Enlarge evidence</span>
+-                </button>
++                <EvidenceImage
++                  key={selectedDetailFrame.evidence_url}
++                  src={selectedDetailFrame.evidence_url}
++                  alt={`Evidence at ${videoTime(selectedDetailFrame.video_seconds)}`}
++                  imageClass="incident-review-image"
++                  onEnlarge={() => setZoomEvidenceUrl(selectedDetailFrame.evidence_url)}
++                />
+               ) : (
+                 <div className="incident-no-evidence">
+                   No evidence image was saved for this frame.
+@@ -927,19 +920,12 @@ function workerPpeClass(value) {
+               Verify the photograph before taking action.
+               Visual appearance cannot confirm certified safety footwear.
+             </p>
+-            <button
+-              type="button"
+-              className="ppe-evidence-zoom-trigger"
+-              aria-label={`Enlarge evidence photo for incident ${selected.id}`}
+-              onClick={() => setZoomEvidenceUrl(selectedEvidenceUrl || selected.evidenceUrl)}
+-            >
+-              <img
+-                src={selectedEvidenceUrl || selected.evidenceUrl}
+-                alt={`Evidence photo for incident ${selected.id}`}
+-                loading="lazy"
+-              />
+-              <span className="ppe-evidence-zoom-hint">⤢ Enlarge evidence</span>
+-            </button>
++            <EvidenceImage
++              key={selectedEvidenceUrl || selected.evidenceUrl}
++              src={selectedEvidenceUrl || selected.evidenceUrl}
++              alt={`Evidence photo for incident ${selected.id}`}
++              onEnlarge={() => setZoomEvidenceUrl(selectedEvidenceUrl || selected.evidenceUrl)}
++            />
+           </div>
+         ) : (
+           <p className="muted">
+@@ -1239,7 +1225,11 @@ function workerPpeClass(value) {
+           >
+             ✕ Close
+           </button>
+-          <img src={zoomEvidenceUrl} alt={`Enlarged saved evidence for incident ${selected.id}`} />
++          <EvidenceImage
++            key={zoomEvidenceUrl}
++            src={zoomEvidenceUrl}
++            alt={`Enlarged saved evidence for incident ${selected.id}`}
++          />
+           <p>Saved evidence · Press Escape or Close to return to the incident.</p>
+         </div>
+       )}
+@@ -1253,6 +1243,69 @@ function Metric({ title, value, note }) {
+   return <article className="metric-card"><p className="muted">{title}</p><strong>{value}</strong><p className="metric-note">{note}</p></article>;
+ }
+ 
++// An older SQLite record can retain a URL even after its JPEG is gone.
++// Keep the image request separate from the incident/review state so a failed
++// photograph never becomes a broken-image icon or changes a human finding.
++function EvidenceImage({ src, alt, imageClass = '', onEnlarge }) {
++  const [loadState, setLoadState] = useState('loading');
++  const [attempt, setAttempt] = useState(0);
++  const retryableUrl = attempt && !/^(data:|blob:)/i.test(src)
++    ? `${src}${src.includes('?') ? '&' : '?'}evidence_retry=${attempt}`
++    : src;
++
++  function retryImage() {
++    setLoadState('loading');
++    setAttempt((count) => count + 1);
++  }
++
++  const image = (
++    <img
++      key={attempt}
++      className={imageClass}
++      src={retryableUrl}
++      alt={alt}
++      loading="eager"
++      onLoad={() => setLoadState('ready')}
++      onError={() => setLoadState('error')}
++      style={{ opacity: loadState === 'ready' ? 1 : 0 }}
++    />
++  );
++
++  return (
++    <div className={`ppe-evidence-surface${onEnlarge ? '' : ' ppe-evidence-expanded'}`}
++      aria-busy={loadState === 'loading'}>
++      {onEnlarge ? (
++        <button
++          type="button"
++          className="ppe-evidence-zoom-trigger"
++          aria-label={`Enlarge ${alt.toLowerCase()}`}
++          disabled={loadState !== 'ready'}
++          onClick={onEnlarge}
++        >
++          {image}
++          {loadState === 'ready' && <span className="ppe-evidence-zoom-hint">⤢ Enlarge evidence</span>}
++        </button>
++      ) : image}
++
++      {loadState !== 'ready' && (
++        <div className="ppe-evidence-status" role={loadState === 'error' ? 'alert' : 'status'}>
++          {loadState === 'loading' ? (
++            <span>Loading evidence image…</span>
++          ) : (
++            <>
++              <strong>Evidence image could not be loaded.</strong>
++              <p>The saved image may be unavailable, particularly for an older incident.</p>
++              <button type="button" className="outline-button" onClick={retryImage}>
++                Retry image
++              </button>
++            </>
++          )}
++        </div>
++      )}
++    </div>
++  );
++}
++
+ function IncidentFilters({ search, onSearch, severity, onSeverity, ppe, onPpe, sort, onSort, onReset }) {
+   return (
+     <div className="ppe-incident-filters" role="group" aria-label="Incident search and filters">

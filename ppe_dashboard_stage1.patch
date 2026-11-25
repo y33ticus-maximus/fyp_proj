@@ -1,0 +1,725 @@
+diff --git a/backend/main.py b/backend/main.py
+index 4c8d644..b909dfc 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -19,7 +19,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+ from fastapi.responses import FileResponse
+ import httpx
+ from PIL import Image, ImageOps, UnidentifiedImageError
+-from pydantic import BaseModel, ConfigDict, Field, ValidationError
++from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+ from storage import PPEStore
+ 
+ # Load the local .env file without requiring python-dotenv.
+@@ -78,14 +78,20 @@ For violation fields only use yes/no/unclear. No surrounding commentary or markd
+ """
+ 
+ TriState = Literal['yes', 'no', 'unclear']
++WorkerPPE = Literal['worn', 'missing', 'unclear']
+ 
+ 
+ class Worker(BaseModel):
+     model_config = ConfigDict(extra='ignore')
+     position: str = ''
+-    helmet: str = 'unclear'
+-    vest: str = 'unclear'
+-    boots: str = 'unclear'
++    helmet: WorkerPPE = 'unclear'
++    vest: WorkerPPE = 'unclear'
++    boots: WorkerPPE = 'unclear'
++
++    @field_validator('helmet', 'vest', 'boots', mode='before')
++    @classmethod
++    def normalise_worker_ppe(cls, value):
++        return value.strip().lower() if isinstance(value, str) else value
+ 
+ 
+ class PPEOutput(BaseModel):
+@@ -137,6 +143,64 @@ def overall_status(output: PPEOutput, review_unclear_boots: bool = False) -> str
+     return 'compliant'
+ 
+ 
++def consistency_warnings(output: PPEOutput) -> list[str]:
++    """Identify contradictory VLM fields before a result can be called compliant.
++
++    The checks are deliberately conservative: an inconsistent response needs
++    human review, not an automatically invented PPE violation.
++    """
++    warnings = []
++    listed_workers = len(output.workers)
++    if listed_workers != output.worker_count:
++        warnings.append(
++            f'Model reported {output.worker_count} worker(s) but gave '
++            f'{listed_workers} individual worker assessment(s).'
++        )
++
++    for item, label in (('helmet', 'Helmet'), ('vest', 'Safety vest'), ('boots', 'Boots')):
++        values = [getattr(worker, item) for worker in output.workers]
++        image_flag = getattr(output, f'{item}_violation')
++        if image_flag == 'no' and ('missing' in values or 'unclear' in values):
++            warnings.append(
++                f'{label}: image-level result says no violation, but at least '
++                'one worker is marked missing or unclear.'
++            )
++        elif image_flag == 'yes' and listed_workers == output.worker_count \
++                and 'missing' not in values:
++            warnings.append(
++                f'{label}: image-level result reports a violation, but no '
++                'individual worker is marked missing.'
++            )
++
++    if output.worker_count == 0 and any(
++        getattr(output, f'{item}_violation') != 'unclear'
++        for item in ('helmet', 'vest', 'boots')
++    ):
++        warnings.append(
++            'No workers were detected, but image-level PPE fields are not all unclear.'
++        )
++    return warnings
++
++
++def validated_overall_status(output: PPEOutput,
++                             review_unclear_boots: bool = False) -> tuple[str, list[str]]:
++    warnings = consistency_warnings(output)
++    status = overall_status(output, review_unclear_boots=review_unclear_boots)
++    if warnings and status in ('compliant', 'boots_unverified', 'no_workers'):
++        if status == 'no_workers' and not output.workers:
++            # A no-worker image should not create an alert solely because the
++            # model filled in an inconsistent image-level PPE field.
++            return status, warnings
++        # Preserve the opt-in footwear review policy. Contradictory boots-only
++        # responses are not compliant, but should not create alerts by default.
++        boots_only = (not review_unclear_boots
++                      and output.helmet_violation == 'no'
++                      and output.vest_violation == 'no'
++                      and all(warning.startswith('Boots:') for warning in warnings))
++        status = 'boots_unverified' if boots_only else 'unclear'
++    return status, warnings
++
++
+ def normalise_image(contents: bytes) -> bytes:
+     """Check that bytes are an actual image; normalise dimensions/orientation to JPEG."""
+     try:
+@@ -251,7 +315,9 @@ def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if
+         raise HTTPException(502, detail=message) from None
+ 
+     duration = round(time.monotonic() - started, 2)
+-    overall = overall_status(parsed, review_unclear_boots=review_unclear_boots)
++    overall, warnings = validated_overall_status(
++        parsed, review_unclear_boots=review_unclear_boots
++    )
+     evidence_url = None
+     # Evidence images have no base64 representation in browser localStorage.
+     if overall in ('violation', 'unclear') or video_name:
+@@ -268,6 +334,7 @@ def analyze(file: UploadFile = File(...), model: str = Form(ALLOWED_MODELS[0] if
+         'review_unclear_boots': review_unclear_boots,
+         'worker_count': parsed.worker_count,
+         'workers': [worker.model_dump() for worker in parsed.workers],
++        'validation_warnings': warnings,
+         'processing_seconds': duration,
+         'analyzed_at': datetime.now(timezone.utc).isoformat(),
+         'evidence_url': evidence_url,
+diff --git a/backend/storage.py b/backend/storage.py
+index 7003afe..bf22c44 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -383,10 +383,21 @@ class PPEStore:
+         with self.connect() as conn:
+             rows = conn.execute('''
+                 SELECT id, analyzed_at, overall_status, video_seconds, evidence_url,
+-                       model, helmet_violation, vest_violation, boots_violation
++                       model, helmet_violation, vest_violation, boots_violation, result_json
+                 FROM analyses WHERE incident_id = ? ORDER BY id ASC
+             ''', (incident_id,)).fetchall()
+-        return [dict(row) for row in rows]
++        frames = []
++        for row in rows:
++            frame = dict(row)
++            raw_result = frame.pop('result_json', None)
++            try:
++                result = json.loads(raw_result) if raw_result else {}
++            except (TypeError, ValueError):
++                result = {}
++            warnings = result.get('validation_warnings', []) if isinstance(result, dict) else []
++            frame['validation_warnings'] = warnings if isinstance(warnings, list) else []
++            frames.append(frame)
++        return frames
+ 
+     def state(self) -> dict:
+         with self.connect() as conn:
+diff --git a/backend/tests/test_consistency.py b/backend/tests/test_consistency.py
+new file mode 100644
+index 0000000..a00dde1
+--- /dev/null
++++ b/backend/tests/test_consistency.py
+@@ -0,0 +1,142 @@
++"""Run from the project root: python -m unittest discover -s backend/tests"""
++
++import json
++import sys
++import tempfile
++import unittest
++from io import BytesIO
++from pathlib import Path
++from unittest.mock import patch
++
++from fastapi import UploadFile
++from PIL import Image
++from starlette.datastructures import Headers
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++
++import main  # noqa: E402
++from main import PPEOutput, consistency_warnings, overall_status, validated_overall_status  # noqa: E402
++from storage import PPEStore  # noqa: E402
++
++
++class ResultConsistencyTests(unittest.TestCase):
++    def make_result(self, workers, helmet='no', vest='no', boots='no', count=None):
++        return PPEOutput.model_validate({
++            'worker_count': len(workers) if count is None else count,
++            'workers': workers,
++            'helmet_violation': helmet,
++            'vest_violation': vest,
++            'boots_violation': boots,
++        })
++
++    def test_valid_all_worn_has_no_warnings(self):
++        data = self.make_result([{'helmet': 'worn', 'vest': 'worn', 'boots': 'worn'}])
++        self.assertEqual(consistency_warnings(data), [])
++        self.assertEqual(overall_status(data), 'compliant')
++
++    def test_missing_helmet_cannot_agree_with_no_violation(self):
++        data = self.make_result([{'helmet': 'missing', 'vest': 'worn', 'boots': 'worn'}])
++        self.assertTrue(any('Helmet:' in warning for warning in consistency_warnings(data)))
++
++    def test_unclear_worker_conflicts_with_definitive_no(self):
++        data = self.make_result([{'helmet': 'unclear', 'vest': 'worn', 'boots': 'worn'}])
++        self.assertTrue(any('Helmet:' in warning for warning in consistency_warnings(data)))
++
++    def test_worker_count_mismatch_is_flagged(self):
++        data = self.make_result([{'helmet': 'worn', 'vest': 'worn', 'boots': 'worn'}], count=2)
++        self.assertTrue(any('worker(s)' in warning for warning in consistency_warnings(data)))
++
++    def test_no_workers_requires_unclear_flags(self):
++        data = self.make_result([], count=0)
++        self.assertTrue(consistency_warnings(data))
++        self.assertEqual(validated_overall_status(data)[0], 'no_workers')
++
++    def test_worker_labels_are_case_normalized(self):
++        data = self.make_result([{'helmet': 'Worn', 'vest': ' WORN ', 'boots': 'Worn'}])
++        self.assertEqual(consistency_warnings(data), [])
++
++    def test_supported_unclear_footwear_is_not_compliant(self):
++        data = self.make_result(
++            [{'helmet': 'worn', 'vest': 'worn', 'boots': 'unclear'}], boots='unclear'
++        )
++        self.assertEqual(consistency_warnings(data), [])
++        self.assertEqual(overall_status(data), 'boots_unverified')
++
++    def test_boots_only_conflict_does_not_create_default_alert(self):
++        data = self.make_result(
++            [{'helmet': 'worn', 'vest': 'worn', 'boots': 'unclear'}], boots='no'
++        )
++        status, warnings = validated_overall_status(data, review_unclear_boots=False)
++        self.assertEqual(status, 'boots_unverified')
++        self.assertTrue(warnings)
++
++    def test_inconsistent_result_is_saved_for_review(self):
++        payload = {
++            'worker_count': 1,
++            'workers': [{'helmet': 'missing', 'vest': 'worn', 'boots': 'worn'}],
++            'helmet_violation': 'no',
++            'vest_violation': 'no',
++            'boots_violation': 'no',
++        }
++
++        class FakeOllamaResponse:
++            def raise_for_status(self):
++                pass
++
++            def json(self):
++                return {'message': {'content': json.dumps(payload)}}
++
++        class FakeOllamaClient:
++            def __init__(self, **_kwargs):
++                pass
++
++            def __enter__(self):
++                return self
++
++            def __exit__(self, *_args):
++                pass
++
++            def post(self, *_args, **_kwargs):
++                return FakeOllamaResponse()
++
++        image = BytesIO()
++        Image.new('RGB', (12, 12), '#aaccee').save(image, 'PNG')
++        image.seek(0)
++        uploaded = UploadFile(file=image, filename='test.png',
++                              headers=Headers({'content-type': 'image/png'}))
++        with tempfile.TemporaryDirectory() as temp_dir:
++            with patch.object(main, 'OLLAMA_BASE_URL', 'http://localhost:11434'), \
++                    patch.object(main, 'EVIDENCE_DIR', Path(temp_dir)), \
++                    patch.object(main, 'STORE') as store, \
++                    patch.object(main.httpx, 'Client', FakeOllamaClient):
++                store.save_analysis.return_value = {
++                    'analysis_id': 1, 'incident_id': 1, 'incident_action': 'created'
++                }
++                result = main.analyze(file=uploaded, model=main.ALLOWED_MODELS[0],
++                                      location='Test site', camera='UPLOAD',
++                                      review_unclear_boots=False,
++                                      video_session_id='', video_name='',
++                                      video_timestamp_seconds=None)
++                self.assertEqual(result['overall_status'], 'unclear')
++                self.assertTrue(result['validation_warnings'])
++                self.assertEqual(
++                    store.save_analysis.call_args.args[0]['overall_status'], 'unclear'
++                )
++
++    def test_saved_incident_frames_preserve_validation_warnings(self):
++        with tempfile.TemporaryDirectory() as temp_dir:
++            store = PPEStore(Path(temp_dir) / 'test.sqlite3')
++            result = {
++                'model': 'example', 'overall_status': 'unclear',
++                'helmet_violation': 'no', 'vest_violation': 'no',
++                'boots_violation': 'no', 'worker_count': 1,
++                'validation_warnings': ['Example contradiction'],
++            }
++            saved = store.save_analysis(result)
++            frames = store.incident_analyses(saved['incident_id'])
++            self.assertEqual(frames[0]['validation_warnings'],
++                             ['Example contradiction'])
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/my-app/src/AnalysisUpload.jsx b/my-app/src/AnalysisUpload.jsx
+index 957ae65..1aaa8da 100644
+--- a/my-app/src/AnalysisUpload.jsx
++++ b/my-app/src/AnalysisUpload.jsx
+@@ -57,6 +57,7 @@ function useObjectUrl(file) {
+ export default function AnalysisUpload({ onResult }) {
+   const [file, setFile] = useState(null);
+   const [videoFile, setVideoFile] = useState(null);
++  const [videoDuration, setVideoDuration] = useState(null);
+   const [activeMedia, setActiveMedia] = useState('image');
+   const [location, setLocation] = useState('Construction site');
+   const [camera, setCamera] = useState('UPLOAD');
+@@ -200,6 +201,7 @@ export default function AnalysisUpload({ onResult }) {
+     setImageResult(null);
+     setFrameHistory([]);
+     setSelectedFrameTime(null);
++    setVideoDuration(null);
+ 
+     if (!next) {
+       setFile(null);
+@@ -235,6 +237,7 @@ export default function AnalysisUpload({ onResult }) {
+     setError('');
+     setFrameHistory([]);
+     setSelectedFrameTime(null);
++    setVideoDuration(null);
+   }
+ 
+   function handleFrameExtracted(frameFile, metadata) {
+@@ -292,7 +295,7 @@ export default function AnalysisUpload({ onResult }) {
+             <span className="analysis-small-label">Media</span>
+             <label className="analysis-upload-button"
+               htmlFor="ppe-unified-media">
+-              ? Upload media
++              ↑ Upload media
+             </label>
+             <input id="ppe-unified-media" type="file"
+               className="analysis-hidden-file"
+@@ -340,7 +343,7 @@ export default function AnalysisUpload({ onResult }) {
+         </div>
+ 
+         <details className="analysis-advanced-settings">
+-          <summary>? Advanced settings</summary>
++          <summary>⚙ Advanced settings</summary>
+           <label className="boot-review-setting">
+             <input type="checkbox"
+               disabled={videoRunning || busy}
+@@ -359,6 +362,7 @@ export default function AnalysisUpload({ onResult }) {
+       <VideoSampler
+         externalFile={videoFile}
+         externalIntervalSeconds={intervalSeconds}
++        externalDurationSeconds={videoDuration}
+         controlsHidden
+         startRef={videoStartRef}
+         onAnalyzeFrame={analyzeImageFile}
+@@ -387,7 +391,11 @@ export default function AnalysisUpload({ onResult }) {
+           )}
+           {activeMedia === 'video' && videoUrl && (
+             <>
+-              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline />
++              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline
++                onLoadedMetadata={(event) => {
++                  const duration = event.currentTarget.duration;
++                  setVideoDuration(Number.isFinite(duration) && duration > 0 ? duration : null);
++                }} />
+               <p className="ppe-media-caption">{videoFile?.name} · playback independent of AI analysis</p>
+               {selectedFrame && frameUrl && (
+                 <div className="ppe-current-frame">
+@@ -422,6 +430,19 @@ export default function AnalysisUpload({ onResult }) {
+           {currentResult && (
+             <>
+               <p className="ppe-overall-heading">{OVERALL_TEXT[currentResult.overall_status] || 'Analysis complete'}</p>
++              {Array.isArray(currentResult.validation_warnings)
++                && currentResult.validation_warnings.length > 0 && (
++                <div className="ppe-consistency-warning" role="alert">
++                  <strong>⚠ AI response requires manual verification</strong>
++                  <p>The model returned conflicting PPE information. Do not treat this
++                    assessment as verified compliance.</p>
++                  <ul>
++                    {currentResult.validation_warnings.map((warning, index) => (
++                      <li key={`${index}-${warning}`}>{warning}</li>
++                    ))}
++                  </ul>
++                </div>
++              )}
+               <div className="ppe-category-list">
+                 {[
+                   ['Helmet', currentResult.helmet_violation],
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index 5ddb9d8..7d2eef1 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -158,6 +158,9 @@ const videoDetailFrames = detailFrames
+   .sort((a, b) => Number(a.video_seconds) - Number(b.video_seconds));
+ 
+ const selectedDetailFrame = videoDetailFrames[selectedFrameIndex] || null;
++const detailWarnings = [...new Set(detailFrames.flatMap((frame) =>
++  Array.isArray(frame.validation_warnings) ? frame.validation_warnings : []
++))];
+ 
+ useEffect(() => {
+   if (selectedId == null) return;
+@@ -679,6 +682,14 @@ function reviewIcon(value) {
+           <p className="muted">
+             No evidence photo was saved for this incident.
+           </p>
++        )}
++        {detailWarnings.length > 0 && (
++          <div className="ppe-consistency-warning" role="alert">
++            <strong>⚠ Conflicting model assessments — manual review required</strong>
++            <ul>{detailWarnings.map((warning, index) => (
++              <li key={`${index}-${warning}`}>{warning}</li>
++            ))}</ul>
++          </div>
+         )}
+                 {/* Compact incident metadata, intentionally BELOW the frame/image reviewer */}
+         <section className="incident-summary-section" aria-label="Incident information">
+diff --git a/my-app/src/MediaAnalysis.css b/my-app/src/MediaAnalysis.css
+index a1724c0..f78e376 100644
+--- a/my-app/src/MediaAnalysis.css
++++ b/my-app/src/MediaAnalysis.css
+@@ -329,3 +329,107 @@
+     padding: 18px;
+   }
+ }
++
++/* Stage 1: visible progress and stop controls for the integrated video sampler. */
++.analysis-panel .ppe-video-run-panel {
++  margin: 18px 0 20px;
++  padding: 18px 20px;
++  border: 1px solid #cbdfee;
++  border-radius: 12px;
++  background: #f7fbff;
++  color: #234159;
++}
++.analysis-panel .ppe-video-run-header,
++.analysis-panel .ppe-video-progress-top {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  flex-wrap: wrap;
++  gap: 10px;
++}
++.analysis-panel .ppe-video-run-header strong { font-size: 14px; }
++.analysis-panel .ppe-video-run-header p { margin: 3px 0 0; }
++.analysis-panel .ppe-video-run-phase {
++  padding: 5px 10px;
++  border-radius: 999px;
++  background: #dff4e8;
++  color: #167548;
++  font-size: 11px;
++  font-weight: 750;
++}
++.analysis-panel .ppe-video-run-stats {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 10px 22px;
++  margin-top: 13px;
++  font-size: 12px;
++  color: #60758b;
++}
++.analysis-panel .ppe-video-run-stats strong { color: #2b4c66; }
++.analysis-panel .ppe-video-progress-top {
++  margin: 16px 0 9px;
++  font-size: 12px;
++}
++.analysis-panel .ppe-video-progress-bar {
++  height: 11px;
++  overflow: hidden;
++  border-radius: 999px;
++  background: #dfe9f1;
++}
++.analysis-panel .ppe-video-progress-bar span {
++  display: block;
++  height: 100%;
++  border-radius: inherit;
++  background: linear-gradient(90deg, #2a9d67, #90d8a2);
++  transition: width .3s ease;
++}
++.analysis-panel .ppe-video-stop-button {
++  margin-top: 15px;
++  padding: 10px 13px;
++  border-radius: 8px;
++  background: #fff4f4;
++  border: 1px solid #f3c7c7;
++  color: #b43434;
++  font-size: 12px;
++  font-weight: 750;
++}
++.analysis-panel .ppe-video-stop-button:hover:not(:disabled) { background: #ffe7e7; }
++.analysis-panel .ppe-video-run-warning {
++  margin: 13px 0 0;
++  padding: 11px 12px;
++  border-radius: 8px;
++  background: #fff6e7;
++  border: 1px solid #f1d49a;
++  color: #865b22;
++  font-size: 12px;
++}
++.ppe-consistency-warning {
++  margin: 15px 0;
++  padding: 14px 16px;
++  border: 1px solid #f1d49a;
++  border-radius: 10px;
++  background: #fff8e9;
++  color: #7c5412;
++  font-size: 12px;
++  line-height: 1.6;
++}
++.ppe-consistency-warning strong { font-size: 13px; }
++.ppe-consistency-warning p { margin: 7px 0 0; }
++.ppe-consistency-warning ul { margin: 8px 0 0; padding-left: 18px; }
++.dark-theme .analysis-panel .ppe-video-run-panel {
++  background: #162e45;
++  border-color: #426481;
++  color: #e4edf8;
++}
++.dark-theme .analysis-panel .ppe-video-run-stats,
++.dark-theme .analysis-panel .ppe-video-run-stats strong { color: #c6d7e9; }
++.dark-theme .analysis-panel .ppe-video-run-warning,
++.dark-theme .ppe-consistency-warning,
++.dashboard.dark-theme .ppe-consistency-warning {
++  background: #46351b;
++  border-color: #8a6931;
++  color: #ffe6a7;
++}
++@media (prefers-reduced-motion: reduce) {
++  .analysis-panel .ppe-video-progress-bar span { transition: none; }
++}
+diff --git a/my-app/src/VideoSampler.jsx b/my-app/src/VideoSampler.jsx
+index 65408ba..c4340ff 100644
+--- a/my-app/src/VideoSampler.jsx
++++ b/my-app/src/VideoSampler.jsx
+@@ -13,6 +13,7 @@ export default function VideoSampler({
+   disabled = false,
+   externalFile = null,
+   externalIntervalSeconds = null,
++  externalDurationSeconds = null,
+   controlsHidden = false,
+   startRef = null,
+ }) {
+@@ -21,10 +22,33 @@ export default function VideoSampler({
+   const [running, setRunning] = useState(false);
+   const [progress, setProgress] = useState('');
+   const [error, setError] = useState('');
++  const [runStats, setRunStats] = useState({
++    phase: 'idle', total: 0, completed: 0, success: 0, errors: 0,
++    currentFrame: 0, estimatedRemaining: null,
++  });
+   const stopRequested = useRef(false);
+   const runningLock = useRef(false);
+   const chosenVideo = controlsHidden ? externalFile : file;
+   const chosenInterval = controlsHidden ? externalIntervalSeconds : intervalSeconds;
++  const plannedFrames = Number.isFinite(externalDurationSeconds) && externalDurationSeconds > 0
++    ? Math.ceil(externalDurationSeconds / chosenInterval) : null;
++  const percent = runStats.total
++    ? Math.round(100 * runStats.completed / runStats.total) : 0;
++
++  useEffect(() => {
++    if (!runningLock.current) {
++      setRunStats({ phase: 'idle', total: 0, completed: 0, success: 0,
++        errors: 0, currentFrame: 0, estimatedRemaining: null });
++      setProgress('');
++      setError('');
++    }
++  }, [externalFile]);
++
++  function formatDuration(seconds) {
++    const amount = Math.max(0, Math.round(Number(seconds) || 0));
++    if (amount < 60) return `${amount}s`;
++    return `${Math.floor(amount / 60)}m ${String(amount % 60).padStart(2, '0')}s`;
++  }
+ 
+ 
+   async function startAnalysis() {
+@@ -33,6 +57,8 @@ export default function VideoSampler({
+     setRunning(true);
+     setError('');
+     setProgress('Loading video…');
++    setRunStats({ phase: 'loading', total: 0, completed: 0, success: 0,
++      errors: 0, currentFrame: 0, estimatedRemaining: null });
+     stopRequested.current = false;
+     const sessionId = crypto.randomUUID();
+ 
+@@ -44,6 +70,9 @@ export default function VideoSampler({
+     let started = false;
+ 
+     try {
++      // Lock the parent's file/model controls while video metadata is loading.
++      onStart?.();
++      started = true;
+       await new Promise((resolve, reject) => {
+         video.onloadeddata = resolve;
+         video.onerror = () => reject(new Error('This browser could not decode the video. Try an MP4 (H.264).'));
+@@ -57,9 +86,22 @@ export default function VideoSampler({
+       if (!video.videoWidth || !video.videoHeight) {
+         throw new Error('No usable video frames were found.');
+       }
++      if (stopRequested.current) {
++        setProgress('Stopped before processing any frames.');
++        setRunStats((previous) => ({ ...previous, phase: 'stopped' }));
++        return;
++      }
+ 
+       const timestamps = [];
+       for (let t = 0; t < duration; t += chosenInterval) timestamps.push(t);
++      if (timestamps.length > 100 && !window.confirm(
++        `This video will require ${timestamps.length.toLocaleString()} model requests. ` +
++        'The analysis may take a long time. Continue?'
++      )) {
++        setProgress('Analysis cancelled before processing any frames.');
++        setRunStats((previous) => ({ ...previous, phase: 'cancelled' }));
++        return;
++      }
+ 
+       const canvas = document.createElement('canvas');
+       const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+@@ -68,10 +110,11 @@ export default function VideoSampler({
+       const ctx = canvas.getContext('2d');
+       if (!ctx) throw new Error('This browser does not support video frame capture.');
+ 
+-      onStart?.();
+-      started = true;
+       let success = 0;
+       let errors = 0;
++      const runStartedAt = performance.now();
++      setRunStats({ phase: 'running', total: timestamps.length, completed: 0,
++        success: 0, errors: 0, currentFrame: 0, estimatedRemaining: null });
+ 
+       for (let i = 0; i < timestamps.length; i++) {
+         if (stopRequested.current) break;
+@@ -95,6 +138,7 @@ export default function VideoSampler({
+         onFrameExtracted?.(frameFile, metadata);
+ 
+         setProgress(`Analysing frame ${i + 1}/${timestamps.length} · ${seconds}s of footage`);
++        setRunStats((previous) => ({ ...previous, currentFrame: i + 1 }));
+         try {
+           // Awaiting each request ensures only one Ollama request at a time.
+           await onAnalyzeFrame(frameFile, metadata);
+@@ -104,13 +148,21 @@ export default function VideoSampler({
+           // Individual frame errors are recorded in the parent panel. Continue.
+           setError(`A frame could not be analysed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+         }
++        const completed = i + 1;
++        const elapsedSeconds = (performance.now() - runStartedAt) / 1000;
++        const estimate = elapsedSeconds / completed * (timestamps.length - completed);
++        setRunStats((previous) => ({ ...previous, completed, success, errors,
++          estimatedRemaining: Math.round(estimate) }));
+       }
++      setRunStats((previous) => ({ ...previous,
++        phase: stopRequested.current ? 'stopped' : 'complete', estimatedRemaining: 0 }));
+       setProgress(stopRequested.current
+         ? `Stopped · ${success} analysed, ${errors} errors.`
+         : `Completed · ${success} analysed, ${errors} errors.`);
+     } catch (err) {
+       setError(err instanceof Error ? err.message : 'Video processing failed.');
+       setProgress('Video analysis stopped.');
++      setRunStats((previous) => ({ ...previous, phase: 'failed' }));
+     } finally {
+       if (started) onFinish?.();
+       video.pause();
+@@ -131,7 +183,66 @@ export default function VideoSampler({
+     };
+   }, [startRef, startAnalysis]);
+ 
+-  if (controlsHidden) return null;
++  if (controlsHidden) {
++    if (!chosenVideo) return null;
++    const activeRun = ['loading', 'running', 'stopped', 'complete', 'failed'].includes(runStats.phase);
++    return (
++      <div className="ppe-video-run-panel" aria-live="polite">
++        <div className="ppe-video-run-header">
++          <div>
++            <strong>Video analysis progress</strong>
++            <p className="muted">Frames are sent to Ollama one at a time.</p>
++          </div>
++          <span className="ppe-video-run-phase">
++            {running ? '● In progress' : runStats.phase === 'complete' ? '✓ Complete'
++              : runStats.phase === 'stopped' ? '■ Stopped'
++              : runStats.phase === 'failed' ? '⚠ Error' : 'Ready'}
++          </span>
++        </div>
++        <div className="ppe-video-run-stats">
++          <span>Sample interval: <strong>{chosenInterval}s</strong></span>
++          <span>Estimated frames: <strong>{plannedFrames?.toLocaleString() ?? 'Reading duration…'}</strong></span>
++          {activeRun && <span>Processed: <strong>{runStats.completed} / {runStats.total || '—'}</strong></span>}
++        </div>
++        {plannedFrames > 100 && !running && runStats.phase === 'idle' && (
++          <p className="ppe-video-run-warning">
++            This will send {plannedFrames.toLocaleString()} requests. Consider a longer
++            sample interval; you will be asked to confirm before starting.
++          </p>
++        )}
++        {activeRun && (
++          <>
++            <div className="ppe-video-progress-top">
++              <span>{progress || 'Preparing video…'}</span>
++              <strong>{percent}%</strong>
++            </div>
++            <div className="ppe-video-progress-bar" role="progressbar"
++              aria-label="Video analysis progress" aria-valuemin={0}
++              aria-valuemax={100} aria-valuenow={percent}>
++              <span style={{ width: `${percent}%` }} />
++            </div>
++            <div className="ppe-video-run-stats">
++              <span>Successful: <strong>{runStats.success}</strong></span>
++              <span>Failed: <strong>{runStats.errors}</strong></span>
++              <span>Estimated remaining: <strong>
++                {runStats.estimatedRemaining == null ? 'Waiting for first frame…'
++                  : formatDuration(runStats.estimatedRemaining)}
++              </strong></span>
++            </div>
++          </>
++        )}
++        {running && <button className="ppe-video-stop-button" type="button"
++          disabled={stopRequested.current}
++          onClick={() => {
++            stopRequested.current = true;
++            setProgress('Stopping after the current frame…');
++          }}>
++          {stopRequested.current ? 'Stopping…' : '■ Stop after current frame'}
++        </button>}
++        {error && <p className="analysis-error" role="alert">{error}</p>}
++      </div>
++    );
++  }
+ 
+   return (
+     <div className="ppe-video-controls">

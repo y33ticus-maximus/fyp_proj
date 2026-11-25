@@ -1,0 +1,820 @@
+diff --git a/backend/main.py b/backend/main.py
+index ac03aa4..81575dd 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -402,6 +402,50 @@ def incident_frames(incident_id: int):
+     return {'analyses': STORE.incident_analyses(incident_id)}
+ 
+ 
++class HumanReviewSubmission(BaseModel):
++    finding: Literal['confirmed', 'false_alert', 'inconclusive']
++    reviewer: str = Field(min_length=1, max_length=80)
++    notes: str = Field(min_length=8, max_length=1000)
++
++
++class HumanReviewAction(BaseModel):
++    action: Literal['start', 'resolve', 'dismiss', 'reopen']
++    reviewer: str = Field(min_length=1, max_length=80)
++    notes: str = Field(default='', max_length=1000)
++
++
++@app.get('/api/incidents/{incident_id}/reviews')
++def incident_reviews(incident_id: int):
++    review = STORE.review_history(incident_id)
++    if review is None:
++        raise HTTPException(404, detail='Incident not found.')
++    return review
++
++
++@app.post('/api/incidents/{incident_id}/reviews')
++def save_incident_review(incident_id: int, update: HumanReviewSubmission):
++    try:
++        review = STORE.record_review(incident_id, finding=update.finding,
++                                     reviewer=update.reviewer, notes=update.notes)
++    except ValueError as exc:
++        raise HTTPException(400, detail=str(exc)) from exc
++    if review is None:
++        raise HTTPException(404, detail='Incident not found.')
++    return review
++
++
++@app.post('/api/incidents/{incident_id}/review-actions')
++def change_review_status(incident_id: int, update: HumanReviewAction):
++    try:
++        review = STORE.review_action(incident_id, action=update.action,
++                                     reviewer=update.reviewer, notes=update.notes)
++    except ValueError as exc:
++        raise HTTPException(400, detail=str(exc)) from exc
++    if review is None:
++        raise HTTPException(404, detail='Incident not found.')
++    return review
++
++
+ class NotificationChange(BaseModel):
+     read: bool = True
+ 
+diff --git a/backend/storage.py b/backend/storage.py
+index 8925d1f..630fc04 100644
+--- a/backend/storage.py
++++ b/backend/storage.py
+@@ -125,6 +125,19 @@ class PPEStore:
+                     is_read INTEGER NOT NULL DEFAULT 0,
+                     created_at TEXT NOT NULL
+                 );
++                CREATE TABLE IF NOT EXISTS incident_reviews (
++                    id INTEGER PRIMARY KEY AUTOINCREMENT,
++                    incident_id INTEGER NOT NULL REFERENCES incidents(id),
++                    action TEXT NOT NULL,
++                    finding TEXT,
++                    reviewer TEXT NOT NULL,
++                    notes TEXT NOT NULL,
++                    from_status TEXT NOT NULL,
++                    to_status TEXT NOT NULL,
++                    created_at TEXT NOT NULL
++                );
++                CREATE INDEX IF NOT EXISTS ix_incident_reviews_incident
++                    ON incident_reviews(incident_id, id);
+             ''')
+ 
+     def save_analysis(self, result: dict, *, video_session_id: str = '',
+@@ -337,7 +350,17 @@ class PPEStore:
+         if status not in INCIDENT_STATUSES:
+             raise ValueError('Invalid incident status')
+         with self.connect() as conn:
++            previous = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
++            if not previous:
++                return False
+             cur = conn.execute('UPDATE incidents SET status=? WHERE id=?', (status, incident_id))
++            if previous['status'] != status:
++                conn.execute('''
++                    INSERT INTO incident_reviews
++                        (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
++                    VALUES (?, 'status_changed', NULL, 'Legacy API',
++                            'Status changed using the earlier endpoint; reviewer not verified.', ?, ?, ?)
++                ''', (incident_id, previous['status'], status, utc_now()))
+             if cur.rowcount and status in ('Resolved', 'Dismissed', 'Archived'):
+                 conn.execute(
+                     'DELETE FROM notifications WHERE incident_id=?',
+@@ -358,18 +381,141 @@ class PPEStore:
+         """Archive an active incident, retaining evidence and history."""
+         with self.connect() as conn:
+             conn.execute('BEGIN IMMEDIATE')
++            previous = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
+             cur = conn.execute(
+                 "UPDATE incidents SET status='Archived' "
+                 "WHERE id=? AND status IN ('Open', 'Review')",
+                 (incident_id,)
+             )
+             if cur.rowcount:
++                conn.execute('''
++                    INSERT INTO incident_reviews
++                        (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
++                    VALUES (?, 'archived', NULL, 'Dashboard',
++                            'Incident archived from the active list.', ?, 'Archived', ?)
++                ''', (incident_id, previous['status'], utc_now()))
+                 conn.execute(
+                     'DELETE FROM notifications WHERE incident_id=?',
+                     (incident_id,)
+                 )
+             return cur.rowcount > 0
+ 
++    @staticmethod
++    def _check_reviewer(reviewer: str) -> str:
++        value = reviewer.strip()
++        if not 1 <= len(value) <= 80:
++            raise ValueError('Enter a reviewer name or initials (up to 80 characters).')
++        return value
++
++    def review_history(self, incident_id: int) -> dict | None:
++        """Human findings stay separate from saved AI results and old incidents."""
++        with self.connect() as conn:
++            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
++            if not incident:
++                return None
++            events = conn.execute('''
++                SELECT id, action, finding, reviewer, notes, from_status, to_status, created_at
++                FROM incident_reviews WHERE incident_id=? ORDER BY id DESC
++            ''', (incident_id,)).fetchall()
++        current_finding = None
++        for event in events:
++            if event['action'] == 'reopen' or (
++                event['action'] == 'status_changed'
++                and event['from_status'] in {'Resolved', 'Dismissed'}
++                and event['to_status'] in {'Open', 'Review'}
++            ):
++                break
++            if event['action'] == 'review':
++                current_finding = event['finding']
++                break
++        return {
++            'status': incident['status'],
++            'currentFinding': current_finding,
++            'history': [{
++                'id': event['id'], 'action': event['action'], 'finding': event['finding'],
++                'reviewer': event['reviewer'], 'notes': event['notes'],
++                'fromStatus': event['from_status'], 'toStatus': event['to_status'],
++                'createdAt': event['created_at'],
++            } for event in events[:200]],
++        }
++
++    def record_review(self, incident_id: int, *, finding: str, reviewer: str, notes: str) -> dict | None:
++        if finding not in {'confirmed', 'false_alert', 'inconclusive'}:
++            raise ValueError('Choose a valid human review finding.')
++        reviewer = self._check_reviewer(reviewer)
++        notes = notes.strip()
++        if not 8 <= len(notes) <= 1000:
++            raise ValueError('Review notes must be between 8 and 1000 characters.')
++        with self.connect() as conn:
++            conn.execute('BEGIN IMMEDIATE')
++            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
++            if not incident:
++                return None
++            old_status = incident['status']
++            if old_status not in {'Open', 'Review'}:
++                raise ValueError('Reopen this incident before recording another review.')
++            conn.execute("UPDATE incidents SET status='Review' WHERE id=?", (incident_id,))
++            conn.execute('''
++                INSERT INTO incident_reviews
++                    (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
++                VALUES (?, 'review', ?, ?, ?, ?, 'Review', ?)
++            ''', (incident_id, finding, reviewer, notes, old_status, utc_now()))
++        return self.review_history(incident_id)
++
++    def review_action(self, incident_id: int, *, action: str, reviewer: str,
++                      notes: str = '') -> dict | None:
++        statuses = {'start': 'Review', 'resolve': 'Resolved',
++                    'dismiss': 'Dismissed', 'reopen': 'Review'}
++        if action not in statuses:
++            raise ValueError('Invalid review action.')
++        reviewer = self._check_reviewer(reviewer)
++        notes = notes.strip()
++        if len(notes) > 1000:
++            raise ValueError('Action notes must be at most 1000 characters.')
++        with self.connect() as conn:
++            conn.execute('BEGIN IMMEDIATE')
++            incident = conn.execute('SELECT status FROM incidents WHERE id=?', (incident_id,)).fetchone()
++            if not incident:
++                return None
++            old_status = incident['status']
++            if action == 'start' and old_status != 'Open':
++                raise ValueError('Only open incidents can start a review.')
++            if action in {'resolve', 'dismiss'}:
++                if old_status != 'Review':
++                    raise ValueError('The incident must be Under Review before it can be closed.')
++                events = conn.execute('''
++                    SELECT action, finding, from_status, to_status FROM incident_reviews
++                    WHERE incident_id=? ORDER BY id DESC
++                ''', (incident_id,)).fetchall()
++                finding = None
++                for event in events:
++                    if event['action'] == 'reopen' or (
++                        event['action'] == 'status_changed'
++                        and event['from_status'] in {'Resolved', 'Dismissed'}
++                        and event['to_status'] in {'Open', 'Review'}
++                    ):
++                        break
++                    if event['action'] == 'review':
++                        finding = event['finding']
++                        break
++                required = 'confirmed' if action == 'resolve' else 'false_alert'
++                if finding != required:
++                    raise ValueError('Save the matching human review finding first.')
++                if action == 'resolve' and len(notes) < 8:
++                    raise ValueError('Describe the corrective action (at least 8 characters).')
++            if action == 'reopen' and old_status not in {'Resolved', 'Dismissed'}:
++                raise ValueError('Only resolved or dismissed incidents can be reopened.')
++            status = statuses[action]
++            conn.execute('UPDATE incidents SET status=? WHERE id=?', (status, incident_id))
++            if action in {'resolve', 'dismiss'}:
++                conn.execute('DELETE FROM notifications WHERE incident_id=?', (incident_id,))
++            conn.execute('''
++                INSERT INTO incident_reviews
++                    (incident_id, action, finding, reviewer, notes, from_status, to_status, created_at)
++                VALUES (?, ?, NULL, ?, ?, ?, ?, ?)
++            ''', (incident_id, action, reviewer, notes, old_status, status, utc_now()))
++        return self.review_history(incident_id)
++
+     def mark_notification(self, notification_id: int, is_read: bool = True) -> bool:
+         with self.connect() as conn:
+             cur = conn.execute('UPDATE notifications SET is_read=? WHERE id=?',
+diff --git a/backend/tests/test_review_workflow.py b/backend/tests/test_review_workflow.py
+new file mode 100644
+index 0000000..8be355a
+--- /dev/null
++++ b/backend/tests/test_review_workflow.py
+@@ -0,0 +1,153 @@
++"""Stage 5 human review records and protected incident transitions."""
++
++import sys
++import tempfile
++import unittest
++from pathlib import Path
++from unittest.mock import patch
++
++from fastapi.testclient import TestClient
++
++sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
++import main  # noqa: E402
++from storage import PPEStore  # noqa: E402
++
++
++class ReviewWorkflowTests(unittest.TestCase):
++    def setUp(self):
++        self.temp = tempfile.TemporaryDirectory()
++        self.addCleanup(self.temp.cleanup)
++        self.database = Path(self.temp.name) / 'review.sqlite3'
++        self.store = PPEStore(self.database)
++        self.incident_id = self.store.save_analysis({
++            'overall_status': 'violation', 'model': 'test-model',
++            'helmet_violation': 'yes', 'vest_violation': 'no',
++            'boots_violation': 'unclear', 'worker_count': 1,
++            'location': 'Test site', 'camera': 'UPLOAD',
++            'workers': [{'position': 'left', 'helmet': 'missing',
++                         'vest': 'worn', 'boots': 'unclear'}],
++        })['incident_id']
++
++    def review(self, finding, notes='Manager compared the saved evidence.'):
++        return self.store.record_review(
++            self.incident_id, finding=finding, reviewer='Officer A', notes=notes)
++
++    def act(self, action, notes=''):
++        return self.store.review_action(
++            self.incident_id, action=action, reviewer='Officer A', notes=notes)
++
++    def test_new_incident_has_no_human_verification(self):
++        data = self.store.review_history(self.incident_id)
++        self.assertEqual(data['status'], 'Open')
++        self.assertIsNone(data['currentFinding'])
++        self.assertEqual(data['history'], [])
++        self.assertEqual(len(self.store.incident_analyses(self.incident_id)[0]['workers']), 1)
++
++    def test_confirmed_review_needs_corrective_action_before_resolution(self):
++        data = self.review('confirmed')
++        self.assertEqual(data['status'], 'Review')
++        self.assertEqual(data['currentFinding'], 'confirmed')
++        with self.assertRaisesRegex(ValueError, 'corrective action'):
++            self.act('resolve', notes='short')
++        self.assertEqual(self.store.review_history(self.incident_id)['status'], 'Review')
++        data = self.act('resolve', 'Worker was given a compliant safety helmet.')
++        self.assertEqual(data['status'], 'Resolved')
++        self.assertEqual([event['action'] for event in data['history']], ['resolve', 'review'])
++        self.assertEqual(len(self.store.incident_analyses(self.incident_id)), 1)
++
++    def test_false_alert_only_allows_dismissal(self):
++        self.review('false_alert', notes='Helmet is visible in the source image.')
++        with self.assertRaisesRegex(ValueError, 'matching human'):
++            self.act('resolve', 'Corrective action is not applicable here.')
++        data = self.act('dismiss')
++        self.assertEqual(data['status'], 'Dismissed')
++        self.assertEqual(data['currentFinding'], 'false_alert')
++
++    def test_inconclusive_cannot_resolve_or_dismiss(self):
++        self.review('inconclusive')
++        for action in ('resolve', 'dismiss'):
++            with self.subTest(action=action), self.assertRaisesRegex(ValueError, 'matching human'):
++                self.act(action, notes='A correction was attempted.')
++        self.assertEqual(self.store.review_history(self.incident_id)['status'], 'Review')
++
++    def test_reopen_keeps_history_but_requires_fresh_review(self):
++        self.review('false_alert')
++        self.act('dismiss')
++        data = self.act('reopen')
++        self.assertEqual(data['status'], 'Review')
++        self.assertIsNone(data['currentFinding'])
++        self.assertEqual(len(data['history']), 3)
++        with self.assertRaisesRegex(ValueError, 'matching human'):
++            self.act('dismiss')
++        self.review('confirmed')
++        self.assertEqual(self.store.review_history(self.incident_id)['currentFinding'], 'confirmed')
++
++    def test_bad_input_and_missing_incident_leave_no_partial_record(self):
++        with self.assertRaises(ValueError):
++            self.review('wrong')
++        with self.assertRaises(ValueError):
++            self.store.record_review(self.incident_id, finding='confirmed', reviewer=' ', notes='Long enough note')
++        with self.assertRaises(ValueError):
++            self.review('confirmed', notes='short')
++        self.assertEqual(self.store.review_history(self.incident_id)['history'], [])
++        self.assertIsNone(self.store.review_history(99999))
++        self.assertIsNone(self.store.review_action(99999, action='start', reviewer='Officer A'))
++
++    def test_legacy_status_change_is_visibly_unattributed(self):
++        self.assertTrue(self.store.update_status(self.incident_id, 'Review'))
++        history = self.store.review_history(self.incident_id)['history']
++        self.assertEqual(history[0]['action'], 'status_changed')
++        self.assertEqual(history[0]['reviewer'], 'Legacy API')
++
++    def test_legacy_reopen_does_not_reuse_old_human_finding(self):
++        self.review('false_alert')
++        self.act('dismiss')
++        self.assertTrue(self.store.update_status(self.incident_id, 'Review'))
++        self.assertIsNone(self.store.review_history(self.incident_id)['currentFinding'])
++        with self.assertRaisesRegex(ValueError, 'matching human'):
++            self.act('dismiss')
++
++    def test_archiving_from_open_logs_the_actual_previous_status(self):
++        self.assertTrue(self.store.archive_incident(self.incident_id))
++        data = self.store.review_history(self.incident_id)
++        self.assertEqual(data['status'], 'Archived')
++        self.assertEqual(data['history'][0]['action'], 'archived')
++        self.assertEqual(data['history'][0]['fromStatus'], 'Open')
++        self.assertEqual(data['history'][0]['toStatus'], 'Archived')
++        with self.assertRaises(ValueError):
++            self.act('reopen')
++
++    def test_database_reinitialization_keeps_review_history(self):
++        self.review('confirmed')
++        reopened_store = PPEStore(self.database)
++        self.assertEqual(reopened_store.review_history(self.incident_id)['currentFinding'], 'confirmed')
++        self.assertEqual(len(reopened_store.review_history(self.incident_id)['history']), 1)
++
++    def test_fastapi_review_actions_and_validation(self):
++        with patch.object(main, 'STORE', self.store):
++            client = TestClient(main.app)
++            prefix = f'/api/incidents/{self.incident_id}'
++            response = client.get(prefix + '/reviews')
++            self.assertEqual(response.status_code, 200)
++            self.assertIsNone(response.json()['currentFinding'])
++            response = client.post(prefix + '/reviews', json={
++                'finding': 'confirmed', 'reviewer': 'Officer A',
++                'notes': 'Safety helmet is absent.',
++            })
++            self.assertEqual(response.status_code, 200)
++            self.assertEqual(response.json()['currentFinding'], 'confirmed')
++            bad = client.post(prefix + '/review-actions', json={
++                'action': 'resolve', 'reviewer': 'Officer A', 'notes': 'short',
++            })
++            self.assertEqual(bad.status_code, 400)
++            good = client.post(prefix + '/review-actions', json={
++                'action': 'resolve', 'reviewer': 'Officer A',
++                'notes': 'Worker was issued a helmet.',
++            })
++            self.assertEqual(good.status_code, 200)
++            self.assertEqual(good.json()['status'], 'Resolved')
++            self.assertEqual(client.get('/api/incidents/99999/reviews').status_code, 404)
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/my-app/src/App.css b/my-app/src/App.css
+index eb807f9..0975398 100644
+--- a/my-app/src/App.css
++++ b/my-app/src/App.css
+@@ -1624,3 +1624,113 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
+   .detail-modal .ppe-worker-table-scroll th,
+   .detail-modal .ppe-worker-table-scroll td { padding: 10px 9px; }
+ }
++
++/* Stage 5: explicit human findings and a saved review activity log. */
++.dashboard .detail-modal .ppe-human-review {
++  margin: 22px 0 18px;
++  padding: 20px;
++  border: 1px solid #dce7ef;
++  border-radius: 12px;
++  background: #fff;
++}
++.detail-modal .ppe-human-review-heading,
++.detail-modal .ppe-review-history-heading {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  flex-wrap: wrap;
++  gap: 10px;
++}
++.detail-modal .ppe-human-review-heading { margin-bottom: 19px; }
++.detail-modal .ppe-human-review-heading h3,
++.detail-modal .ppe-review-history-heading h3 { margin: 0 0 5px; font-size: 17px; }
++.detail-modal .ppe-human-review-heading p { margin: 0; color: #647e92; font-size: 12px; line-height: 1.5; }
++.detail-modal .ppe-human-finding {
++  display: inline-flex;
++  padding: 7px 10px;
++  border-radius: 24px;
++  background: #e9eff4;
++  color: #4d697d;
++  font-size: 11px;
++  font-weight: 800;
++}
++.detail-modal .ppe-human-finding.confirmed { background: #ffe9e6; color: #aa4339; }
++.detail-modal .ppe-human-finding.false_alert { background: #e4f6e9; color: #187047; }
++.detail-modal .ppe-human-finding.inconclusive { background: #fff1d9; color: #8c611e; }
++.detail-modal .ppe-review-form fieldset { min-width: 0; margin: 0; padding: 0; border: none; }
++.detail-modal .ppe-review-form fieldset:disabled { opacity: .65; }
++.detail-modal .ppe-review-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
++.detail-modal .ppe-review-form label,
++.detail-modal .ppe-review-close-actions label {
++  display: flex;
++  flex-direction: column;
++  gap: 7px;
++  margin-bottom: 14px;
++  font-size: 12px;
++  font-weight: 750;
++  color: #345b75;
++}
++.detail-modal .ppe-review-form label > span,
++.detail-modal .ppe-review-close-actions label > span { font-size: 12px; }
++.detail-modal .ppe-review-form input,
++.detail-modal .ppe-review-form select,
++.detail-modal .ppe-review-form textarea,
++.detail-modal .ppe-review-close-actions input {
++  display: block;
++  width: 100%;
++  min-width: 0;
++  border: 1px solid #cadbe7;
++  border-radius: 8px;
++  background: #fff;
++  color: #234257;
++  padding: 11px 12px;
++  font: inherit;
++  font-size: 13px;
++  font-weight: 400;
++}
++.detail-modal .ppe-review-form textarea { resize: vertical; min-height: 86px; }
++.detail-modal .ppe-review-form small { color: #6e899c; font-weight: 400; line-height: 1.6; }
++.detail-modal .ppe-review-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
++.detail-modal .ppe-review-form-actions button { font-size: 12px; }
++.detail-modal .ppe-review-decision-note { margin: 17px 0; padding: 12px 14px; background: #eef6fd; border: 1px solid #d1e4f2; color: #416b89; border-radius: 9px; font-size: 12px; line-height: 1.65; }
++.detail-modal .ppe-review-close-actions { margin: 15px 0 0; padding-bottom: 15px; border-bottom: 1px solid #e3ebf1; }
++.detail-modal .ppe-review-help { margin: 12px 0; padding: 12px 14px; background: #f5f8fb; border-radius: 8px; color: #647f92; font-size: 12px; line-height: 1.6; }
++.detail-modal .ppe-review-error,
++.detail-modal .ppe-review-feedback { margin: 12px 0; padding: 12px 14px; border: 1px solid #fac5c0; border-radius: 9px; background: #fff1ef; color: #a53a33; font-size: 12px; line-height: 1.6; }
++.detail-modal .ppe-review-feedback { border-color: #b9dfc5; background: #ecf9ef; color: #1a7546; }
++.detail-modal .ppe-review-history { margin-top: 23px; padding-top: 18px; border-top: 1px solid #e3ebf1; }
++.detail-modal .ppe-review-history-heading { margin-bottom: 15px; }
++.detail-modal .ppe-review-history-heading span { font-size: 11px; font-weight: 750; color: #7490a4; }
++.detail-modal .ppe-review-history ol { margin: 0; padding: 0 0 0 17px; display: grid; gap: 14px; }
++.detail-modal .ppe-review-history li { padding: 2px 0 7px 8px; font-size: 12px; border-left: 3px solid #66b98f; list-style: none; overflow-wrap: anywhere; }
++.detail-modal .ppe-review-history li strong { display: block; margin-bottom: 4px; color: #29495f; font-size: 13px; }
++.detail-modal .ppe-review-history li small { color: #718a9b; display: block; margin-bottom: 5px; }
++.detail-modal .ppe-review-history li p { margin: 4px 0 6px; color: #44647e; white-space: pre-wrap; line-height: 1.6; }
++
++.dashboard.dark-theme .detail-modal .ppe-human-review { background: #14243a; border-color: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-human-review-heading p,
++.dashboard.dark-theme .detail-modal .ppe-review-form small { color: #b3c8da; }
++.dashboard.dark-theme .detail-modal .ppe-review-form label,
++.dashboard.dark-theme .detail-modal .ppe-review-close-actions label { color: #d9e7f3; }
++.dashboard.dark-theme .detail-modal .ppe-review-form input,
++.dashboard.dark-theme .detail-modal .ppe-review-form select,
++.dashboard.dark-theme .detail-modal .ppe-review-form textarea,
++.dashboard.dark-theme .detail-modal .ppe-review-close-actions input { background: #1d3450; color: #edf5fc; border-color: #46617f; }
++.dashboard.dark-theme .detail-modal .ppe-human-finding.pending { color: #c5d5e2; background: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-human-finding.confirmed { color: #ffccc3; background: #522b2a; }
++.dashboard.dark-theme .detail-modal .ppe-human-finding.false_alert { color: #b7f5cb; background: #215039; }
++.dashboard.dark-theme .detail-modal .ppe-human-finding.inconclusive { color: #ffdea1; background: #533e1c; }
++.dashboard.dark-theme .detail-modal .ppe-review-decision-note { color: #bedaf0; background: #1d3e58; border-color: #35607f; }
++.dashboard.dark-theme .detail-modal .ppe-review-close-actions,
++.dashboard.dark-theme .detail-modal .ppe-review-history { border-color: #36516e; }
++.dashboard.dark-theme .detail-modal .ppe-review-help { background: #1c3450; color: #bdcfde; }
++.dashboard.dark-theme .detail-modal .ppe-review-error { color: #ffc2bb; background: #4b2828; border-color: #99534a; }
++.dashboard.dark-theme .detail-modal .ppe-review-feedback { color: #b7efcc; background: #1f4534; border-color: #417556; }
++.dashboard.dark-theme .detail-modal .ppe-review-history li strong { color: #f1f7fa; }
++.dashboard.dark-theme .detail-modal .ppe-review-history li small { color: #b2c4d4; }
++.dashboard.dark-theme .detail-modal .ppe-review-history li p { color: #cad9e5; }
++
++@media (max-width: 650px) {
++  .dashboard .detail-modal .ppe-human-review { padding: 14px; }
++  .detail-modal .ppe-review-form-grid { grid-template-columns: 1fr; gap: 0; }
++}
+diff --git a/my-app/src/App.jsx b/my-app/src/App.jsx
+index dfbfa0a..b1a96dd 100644
+--- a/my-app/src/App.jsx
++++ b/my-app/src/App.jsx
+@@ -13,6 +13,21 @@ const blankStats = {
+   unclear: 0, bootsUnverified: 0, noWorkers: 0, failed: 0,
+   analyses: 0, workerObservations: 0, incidents: 0, activeIncidents: 0,
+ };
++const emptyReview = { currentFinding: null, history: [] };
++const humanFindingLabel = (finding) => ({
++  confirmed: 'Confirmed PPE concern',
++  false_alert: 'False alert / PPE present',
++  inconclusive: 'Inconclusive — needs evidence',
++}[finding] || 'Not verified');
++const reviewEventLabel = (event) => ({
++  review: humanFindingLabel(event.finding),
++  start: 'Review started',
++  resolve: 'Incident resolved',
++  dismiss: 'False alert dismissed',
++  reopen: 'Incident reopened',
++  archived: 'Incident archived',
++  status_changed: 'Legacy status change (reviewer unverified)',
++}[event.action] || event.action);
+ 
+ async function apiJson(path, init = undefined) {
+   const response = await fetch(path, init);
+@@ -102,6 +117,15 @@ function App() {
+   const [detailsLoading, setDetailsLoading] = useState(false);
+   const [detailsError, setDetailsError] = useState("");
+   const [selectedFrameIndex, setSelectedFrameIndex] = useState(0);
++  const [reviewData, setReviewData] = useState(emptyReview);
++  const [reviewLoading, setReviewLoading] = useState(false);
++  const [reviewBusy, setReviewBusy] = useState(false);
++  const [reviewError, setReviewError] = useState('');
++  const [reviewFeedback, setReviewFeedback] = useState('');
++  const [reviewerName, setReviewerName] = useState('');
++  const [manualFinding, setManualFinding] = useState('');
++  const [reviewNotes, setReviewNotes] = useState('');
++  const [correctiveAction, setCorrectiveAction] = useState('');
+   const frameHistoryRef = useRef(null);
+   const { items, notifications } = data;
+   const stats = data.statistics || blankStats;
+@@ -209,6 +233,26 @@ useEffect(() => {
+     return () => { cancelled = true; };
+   }, [selectedId]);
+ 
++  useEffect(() => {
++    setReviewData(emptyReview);
++    setReviewerName('');
++    setManualFinding('');
++    setReviewNotes('');
++    setCorrectiveAction('');
++    setReviewError('');
++    setReviewFeedback('');
++    setReviewLoading(selectedId != null);
++    if (selectedId == null) return;
++    let cancelled = false;
++    apiJson(`/api/incidents/${selectedId}/reviews`)
++      .then((result) => { if (!cancelled) setReviewData(result); })
++      .catch((error) => {
++        if (!cancelled) setReviewError(`Could not load review history: ${error.message}`);
++      })
++      .finally(() => { if (!cancelled) setReviewLoading(false); });
++    return () => { cancelled = true; };
++  }, [selectedId]);
++
+   const unread = notifications.filter((n) => !n.read).length;
+   const activeItems = items.filter((item) => activeStatus(item.status));
+   const historyItems = items.filter((item) => ['Resolved', 'Dismissed', 'Archived'].includes(item.status));
+@@ -361,15 +405,87 @@ function workerPpeClass(value) {
+     }
+   }
+ 
+-  async function changeStatus(id, status) {
++  async function saveHumanReview(event) {
++    event.preventDefault();
++    const reviewer = reviewerName.trim();
++    const notes = reviewNotes.trim();
++    setReviewError('');
++    setReviewFeedback('');
++    if (!reviewer || !manualFinding || notes.length < 8) {
++      setReviewError('Enter your name or initials, select a finding, and write at least 8 characters of review notes.');
++      return;
++    }
++    setReviewBusy(true);
+     try {
+-      await apiJson(`/api/incidents/${id}`, {
+-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+-        body: JSON.stringify({ status }),
++      const result = await apiJson(`/api/incidents/${selectedId}/reviews`, {
++        method: 'POST', headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ reviewer, finding: manualFinding, notes }),
+       });
+-      await refreshData();
+-      setMessage(`Incident #${id} marked ${status}.`);
+-    } catch (err) { setStorageError(`Could not change status: ${err.message}`); }
++      setReviewData(result);
++      setCorrectiveAction('');
++      const nextStep = {
++        confirmed: 'Add the corrective action below, then select Mark resolved.',
++        false_alert: 'Dismiss false alert is now available below.',
++        inconclusive: 'Keep this incident Under Review until more evidence is available.',
++      }[manualFinding];
++      try {
++        await refreshData();
++        setReviewFeedback(`Human finding saved. ${nextStep} The original AI assessment has not changed.`);
++      } catch {
++        setReviewFeedback('Human finding was saved, but dashboard totals could not refresh. Please reload the page.');
++      }
++    } catch (error) {
++      setReviewError(`Review could not be saved: ${error.message}`);
++    } finally {
++      setReviewBusy(false);
++    }
++  }
++
++  async function submitReviewAction(action) {
++    const reviewer = reviewerName.trim();
++    const notes = action === 'resolve' ? correctiveAction.trim()
++      : action === 'dismiss' ? 'Dismissed after the saved false-alert finding.'
++      : action === 'reopen' ? 'Reopened for another manual review.'
++      : 'Manual review started.';
++    setReviewError('');
++    setReviewFeedback('');
++    if (!reviewer) {
++      setReviewError('Enter your name or initials to record this action.');
++      return;
++    }
++    if (action === 'resolve' && notes.length < 8) {
++      setReviewError('Describe the corrective action (at least 8 characters) before marking this incident resolved.');
++      return;
++    }
++    setReviewBusy(true);
++    try {
++      const result = await apiJson(`/api/incidents/${selectedId}/review-actions`, {
++        method: 'POST', headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ action, reviewer, notes }),
++      });
++      setReviewData(result);
++      let refreshed = true;
++      try {
++        await refreshData();
++      } catch {
++        refreshed = false;
++      }
++      if (action === 'reopen') {
++        setManualFinding('');
++        setReviewNotes('');
++        setCorrectiveAction('');
++      }
++      setReviewFeedback({
++        start: 'Review started. Record your finding when ready.',
++        resolve: 'Incident resolved. Corrective action was added to review history.',
++        dismiss: 'False alert dismissed. The review decision remains in history.',
++        reopen: 'Incident reopened. Save a fresh finding before closing it again.',
++      }[action] + (refreshed ? '' : ' Dashboard status did not refresh; please reload the page.'));
++    } catch (error) {
++      setReviewError(`Action could not be completed: ${error.message}`);
++    } finally {
++      setReviewBusy(false);
++    }
+   }
+ 
+   async function markRead(notificationId) {
+@@ -967,8 +1083,137 @@ function workerPpeClass(value) {
+             </div>
+           )}
+         </section>
+-<p className="muted">This is a prototype. A VLM prediction is not a verified safety violation; review all evidence before taking action.</p>
+-        <div className="modal-actions">{selected.status === "Open" && <button onClick={() => changeStatus(selected.id, "Review")}>Start review</button>}{activeStatus(selected.status) && <><button onClick={() => changeStatus(selected.id, "Resolved")}>Mark resolved</button><button className="outline-button" onClick={() => changeStatus(selected.id, "Dismissed")}>Dismiss false alert</button></>}{!activeStatus(selected.status) && <button className="outline-button" onClick={() => changeStatus(selected.id, "Review")}>Reopen for review</button>}</div>
++        <section className="ppe-human-review" aria-label="Human verification and review history">
++          <div className="ppe-human-review-heading">
++            <div>
++              <h3>Human verification</h3>
++              <p>Record what a manager verified. This does not change the AI model's original prediction.</p>
++            </div>
++            <span className={`ppe-human-finding ${reviewData.currentFinding || 'pending'}`}>
++              {humanFindingLabel(reviewData.currentFinding)}
++            </span>
++          </div>
++          {reviewLoading ? (
++            <p className="ppe-review-help">Loading saved review records…</p>
++          ) : (
++            <>
++              <form className="ppe-review-form" onSubmit={saveHumanReview}>
++                <fieldset disabled={!activeStatus(selected.status) || reviewBusy}>
++                  <div className="ppe-review-form-grid">
++                    <label>
++                      <span>Reviewer name or initials</span>
++                      <input
++                        value={reviewerName}
++                        onChange={(event) => setReviewerName(event.target.value)}
++                        maxLength={80}
++                        autoComplete="off"
++                        placeholder="e.g. Safety Officer A"
++                      />
++                    </label>
++                    <label>
++                      <span>Manual finding</span>
++                      <select value={manualFinding} onChange={(event) => setManualFinding(event.target.value)}>
++                        <option value="">Select a finding…</option>
++                        <option value="confirmed">Confirmed PPE concern</option>
++                        <option value="false_alert">False alert / PPE present</option>
++                        <option value="inconclusive">Inconclusive — more evidence needed</option>
++                      </select>
++                    </label>
++                  </div>
++                  <label>
++                    <span>Review notes</span>
++                    <textarea
++                      value={reviewNotes}
++                      onChange={(event) => setReviewNotes(event.target.value)}
++                      maxLength={1000}
++                      rows={3}
++                      placeholder="Describe the evidence and why you reached this decision…"
++                    />
++                    <small>At least 8 characters. A new save creates another history entry.</small>
++                  </label>
++                  <div className="ppe-review-form-actions">
++                    <button type="submit" disabled={reviewBusy}>Save review record</button>
++                    {selected.status === 'Open' && (
++                      <button type="button" className="outline-button" onClick={() => submitReviewAction('start')} disabled={reviewBusy}>
++                        Start review
++                      </button>
++                    )}
++                  </div>
++                </fieldset>
++              </form>
++              <div className="ppe-review-decision-note">
++                {reviewData.currentFinding === 'confirmed'
++                  ? 'Confirmed PPE concern: the incident stays Under Review until corrective action is documented.'
++                  : reviewData.currentFinding === 'false_alert'
++                    ? 'False alert verified: you can dismiss this incident without changing the original AI result.'
++                    : reviewData.currentFinding === 'inconclusive'
++                      ? 'More evidence is needed. Resolution and dismissal remain unavailable.'
++                      : 'Save a human finding first. The resolution and dismissal buttons will then enable for the matching decision.'}
++              </div>
++              {activeStatus(selected.status) && (
++                <div className="ppe-review-close-actions">
++                  {reviewData.currentFinding === 'confirmed' && (
++                    <label>
++                      <span>Corrective action taken</span>
++                      <input
++                        value={correctiveAction}
++                        onChange={(event) => setCorrectiveAction(event.target.value)}
++                        maxLength={1000}
++                        placeholder="e.g. Worker was issued compliant PPE"
++                      />
++                    </label>
++                  )}
++                  <div className="ppe-review-form-actions">
++                    <button
++                      type="button"
++                      disabled={reviewBusy || selected.status !== 'Review' || reviewData.currentFinding !== 'confirmed'}
++                      onClick={() => submitReviewAction('resolve')}
++                    >Mark resolved</button>
++                    <button
++                      type="button"
++                      className="outline-button"
++                      disabled={reviewBusy || selected.status !== 'Review' || reviewData.currentFinding !== 'false_alert'}
++                      onClick={() => submitReviewAction('dismiss')}
++                    >Dismiss false alert</button>
++                  </div>
++                </div>
++              )}
++              {['Resolved', 'Dismissed'].includes(selected.status) && (
++                <div className="ppe-review-form-actions">
++                  <button type="button" className="outline-button" onClick={() => submitReviewAction('reopen')} disabled={reviewBusy}>
++                    Reopen for review
++                  </button>
++                </div>
++              )}
++              {selected.status === 'Archived' && (
++                <p className="ppe-review-help">This incident is archived; review history is read-only.</p>
++              )}
++            </>
++          )}
++          {reviewError && <p className="ppe-review-error" role="alert">{reviewError}</p>}
++          {reviewFeedback && <p className="ppe-review-feedback" role="status">{reviewFeedback}</p>}
++          <div className="ppe-review-history">
++            <div className="ppe-review-history-heading">
++              <h3>Review history</h3>
++              <span>{reviewData.history?.length || 0} entries</span>
++            </div>
++            {reviewData.history?.length ? (
++              <ol>
++                {reviewData.history.map((entry) => (
++                  <li key={entry.id}>
++                    <strong>{reviewEventLabel(entry)}</strong>
++                    <small>{entry.reviewer} · {incidentDisplayTime(entry.createdAt)}</small>
++                    {entry.notes && <p>{entry.notes}</p>}
++                    {entry.fromStatus !== entry.toStatus && (
++                      <small>{entry.fromStatus} → {entry.toStatus}</small>
++                    )}
++                  </li>
++                ))}
++              </ol>
++            ) : <p className="ppe-review-help">No human review records have been saved yet.</p>}
++          </div>
++        </section>
++        <p className="muted">Prototype: a VLM prediction is not a verified safety violation. Reviewer names are entered manually; there is no user authentication.</p>
+       </section></div>}
+       {selected && zoomEvidenceUrl && (
+         <div

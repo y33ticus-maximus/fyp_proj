@@ -1,0 +1,608 @@
+diff --git a/my-app/src/AnalysisUpload.jsx b/my-app/src/AnalysisUpload.jsx
+index 957ae65..e68a607 100644
+--- a/my-app/src/AnalysisUpload.jsx
++++ b/my-app/src/AnalysisUpload.jsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useRef, useState } from 'react';
+ import VideoSampler from './VideoSampler';
++import { estimateFrameCount, LARGE_JOB_FRAME_THRESHOLD, validSamplingInterval } from './videoSampling';
+ import './MediaAnalysis.css';
+ 
+ const OVERALL_TEXT = {
+@@ -38,6 +39,12 @@ function timecode(seconds) {
+     .join(':');
+ }
+ 
++function approximateDuration(seconds) {
++  if (seconds < 60) return `about ${Math.round(seconds)} sec`;
++  const minutes = Math.ceil(seconds / 60);
++  return minutes < 60 ? `about ${minutes} min` : `about ${Math.floor(minutes / 60)} hr ${minutes % 60} min`;
++}
++
+ /** Browser-only preview for the current file. URLs are revoked on replacement/unmount. */
+ function useObjectUrl(file) {
+   const [url, setUrl] = useState('');
+@@ -68,13 +75,25 @@ export default function AnalysisUpload({ onResult }) {
+   const [connectionMessage, setConnectionMessage] = useState('Checking backend...');
+   const [busy, setBusy] = useState(false);
+   const [videoRunning, setVideoRunning] = useState(false);
+-  const [intervalSeconds, setIntervalSeconds] = useState(60);
++  const [intervalPreset, setIntervalPreset] = useState('60');
++  const [customInterval, setCustomInterval] = useState('20');
++  const [videoDuration, setVideoDuration] = useState(null);
++  const [largeJobConfirmed, setLargeJobConfirmed] = useState(false);
+   const [error, setError] = useState('');
+   const [imageResult, setImageResult] = useState(null);
+   const [frameHistory, setFrameHistory] = useState([]);
+   const [selectedFrameTime, setSelectedFrameTime] = useState(null);
+   const analysisLock = useRef(false);
+   const videoStartRef = useRef(null);
++  const videoStopRef = useRef(null);
++
++  const intervalSeconds = intervalPreset === 'custom' ? Number(customInterval) : Number(intervalPreset);
++  const intervalValid = validSamplingInterval(intervalSeconds)
++    && (intervalPreset !== 'custom' || customInterval.trim() !== '');
++  const estimatedFrames = intervalValid ? estimateFrameCount(videoDuration, intervalSeconds) : null;
++  const largeJob = estimatedFrames !== null && estimatedFrames > LARGE_JOB_FRAME_THRESHOLD;
++
++  useEffect(() => { setLargeJobConfirmed(false); }, [videoFile, intervalSeconds]);
+ 
+   const imageUrl = useObjectUrl(file);
+   const videoUrl = useObjectUrl(videoFile);
+@@ -200,6 +219,7 @@ export default function AnalysisUpload({ onResult }) {
+     setImageResult(null);
+     setFrameHistory([]);
+     setSelectedFrameTime(null);
++    setVideoDuration(null);
+ 
+     if (!next) {
+       setFile(null);
+@@ -235,6 +255,7 @@ export default function AnalysisUpload({ onResult }) {
+     setError('');
+     setFrameHistory([]);
+     setSelectedFrameTime(null);
++    setVideoDuration(null);
+   }
+ 
+   function handleFrameExtracted(frameFile, metadata) {
+@@ -313,32 +334,65 @@ export default function AnalysisUpload({ onResult }) {
+           </div>
+ 
+           {activeMedia === 'video' && videoFile && (
+-            <label className="analysis-field analysis-interval-field">
+-              <span>Sample interval</span>
+-              <select value={intervalSeconds}
++            <div className="analysis-field analysis-interval-field">
++              <label htmlFor="ppe-interval-preset">Sample interval</label>
++              <select id="ppe-interval-preset" value={intervalPreset}
+                 disabled={videoRunning || busy}
+-                onChange={(event) =>
+-                  setIntervalSeconds(Number(event.target.value))
+-                }>
+-                 <option value={1}>Every 1 second</option>
+-                <option value={2}>Every 2 seconds</option>
+-                <option value={3}>Every 3 seconds</option>
+-                <option value={5}>Every 5 seconds</option>
+-                <option value={10}>Every 10 seconds</option>
+-                <option value={15}>Every 15 seconds</option>
+-                <option value={30}>Every 30 seconds</option>
+-                <option value={60}>Every 60 seconds</option>
++                onChange={(event) => setIntervalPreset(event.target.value)}>
++                <option value="60">Quick · every 60 seconds</option>
++                <option value="30">Every 30 seconds</option>
++                <option value="15">Every 15 seconds</option>
++                <option value="10">Standard · every 10 seconds</option>
++                <option value="5">Detailed · every 5 seconds</option>
++                <option value="3">Every 3 seconds</option>
++                <option value="2">Every 2 seconds</option>
++                <option value="1">Every 1 second</option>
++                <option value="custom">Custom interval…</option>
+               </select>
+-            </label>
++              {intervalPreset === 'custom' && (
++                <label className="analysis-custom-interval">
++                  <span>Custom seconds (1–300)</span>
++                  <input type="number" min="1" max="300" step="1" value={customInterval}
++                    disabled={videoRunning || busy}
++                    onChange={(event) => setCustomInterval(event.target.value)} />
++                </label>
++              )}
++            </div>
+           )}
+ 
+           <button type="submit" className="analyse-button"
+             disabled={!(activeMedia === 'video' ? videoFile : file)
+-              || videoRunning || busy}>
++              || videoRunning || busy || (activeMedia === 'video' && (!intervalValid || (largeJob && !largeJobConfirmed)))}>
+             {videoRunning || busy ? 'Analysing?' : 'Analyse media'}
+           </button>
++          {videoRunning && <button type="button" className="outline-button"
++            onClick={() => videoStopRef.current?.()}>Stop after current frame</button>}
+         </div>
+ 
++        {activeMedia === 'video' && videoFile && (
++          <div className="analysis-sampling-estimate" role="status">
++            {!intervalValid ? (
++              <p className="analysis-error">Enter a whole-number interval between 1 and 300 seconds.</p>
++            ) : estimatedFrames === null ? (
++              <p>Reading video duration to estimate frame count…</p>
++            ) : (
++              <>
++                <strong>{estimatedFrames} frame{estimatedFrames === 1 ? '' : 's'} estimated</strong>
++                <span> for {timecode(videoDuration)} of video at every {intervalSeconds}s</span>
++                <p>Illustrative model time: {approximateDuration(estimatedFrames * 10)} at 10 seconds per frame. Actual speed varies by model and connection.</p>
++              </>
++            )}
++            {largeJob && (
++              <label className="analysis-large-job-warning">
++                <input type="checkbox" disabled={videoRunning || busy}
++                  checked={largeJobConfirmed}
++                  onChange={(event) => setLargeJobConfirmed(event.target.checked)} />
++                <span>This will submit more than {LARGE_JOB_FRAME_THRESHOLD} individual AI analyses. I understand it may take a long time.</span>
++              </label>
++            )}
++          </div>
++        )}
++
+         <details className="analysis-advanced-settings">
+           <summary>? Advanced settings</summary>
+           <label className="boot-review-setting">
+@@ -359,8 +413,10 @@ export default function AnalysisUpload({ onResult }) {
+       <VideoSampler
+         externalFile={videoFile}
+         externalIntervalSeconds={intervalSeconds}
++        allowLargeWorkload={largeJobConfirmed}
+         controlsHidden
+         startRef={videoStartRef}
++        stopRef={videoStopRef}
+         onAnalyzeFrame={analyzeImageFile}
+         onVideoSelected={handleVideoSelection}
+         onFrameExtracted={handleFrameExtracted}
+@@ -387,7 +443,8 @@ export default function AnalysisUpload({ onResult }) {
+           )}
+           {activeMedia === 'video' && videoUrl && (
+             <>
+-              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline />
++              <video className="ppe-media-video" src={videoUrl} controls preload="metadata" playsInline
++                onLoadedMetadata={(event) => setVideoDuration(event.currentTarget.duration)} />
+               <p className="ppe-media-caption">{videoFile?.name} · playback independent of AI analysis</p>
+               {selectedFrame && frameUrl && (
+                 <div className="ppe-current-frame">
+diff --git a/my-app/src/MediaAnalysis.css b/my-app/src/MediaAnalysis.css
+index a1724c0..2315d4b 100644
+--- a/my-app/src/MediaAnalysis.css
++++ b/my-app/src/MediaAnalysis.css
+@@ -218,6 +218,51 @@
+   min-width: 185px;
+ }
+ 
++.analysis-panel .analysis-interval-field > label:first-child {
++  font-size: 12px;
++  font-weight: 700;
++}
++
++.analysis-panel .analysis-custom-interval {
++  display: flex;
++  flex-direction: column;
++  gap: 5px;
++  margin-top: 8px;
++  font-size: 11px;
++  color: #567086;
++}
++
++.analysis-panel .analysis-custom-interval input { width: 100%; }
++
++.analysis-panel .analysis-sampling-estimate {
++  border: 1px solid #cbdfee;
++  border-radius: 9px;
++  background: #f2f8fc;
++  padding: 11px 14px;
++  font-size: 12px;
++  color: #234a67;
++}
++
++.analysis-panel .analysis-sampling-estimate strong { font-size: 13px; }
++.analysis-panel .analysis-sampling-estimate p { margin: 6px 0 0; }
++.analysis-panel .analysis-large-job-warning {
++  display: flex;
++  align-items: start;
++  gap: 9px;
++  margin-top: 11px;
++  border-radius: 7px;
++  border: 1px solid #e7c47e;
++  background: #fff3d9;
++  padding: 10px;
++  color: #80520b;
++  cursor: pointer;
++}
++
++.analysis-panel .analysis-large-job-warning input { margin: 2px 0 0; flex-shrink: 0; }
++.dark-theme .analysis-panel .analysis-sampling-estimate { background: #193b56; border-color: #366079; color: #c8e9f8; }
++.dark-theme .analysis-panel .analysis-large-job-warning { background: #4c3b20; border-color: #927135; color: #ffe4ad; }
++.dark-theme .analysis-panel .analysis-custom-interval { color: #b1cbdf; }
++
+ .analysis-panel .analysis-advanced-settings {
+   border-top: 1px solid #dbe5ef;
+   padding-top: 12px;
+diff --git a/my-app/src/ReportPreview.css b/my-app/src/ReportPreview.css
+index 19cba15..bd139a8 100644
+--- a/my-app/src/ReportPreview.css
++++ b/my-app/src/ReportPreview.css
+@@ -34,8 +34,8 @@
+ .ppe-report-kicker { font-size: 10px; color: #24654a; font-weight: 850; letter-spacing: .09em; }
+ .ppe-report-content {
+   min-height: 0;
+-  display: grid;
+-  grid-template-columns: minmax(0, 1.65fr) minmax(270px, .85fr);
++  display: flex;
++  flex-direction: column;
+   gap: 18px;
+   overflow: auto;
+   padding: 22px 25px;
+@@ -69,25 +69,55 @@
+ .ppe-report-frame-card > div:last-child { display: flex; flex-direction: column; padding: 9px 11px; gap: 5px; font-size: 11px; overflow-wrap: anywhere; }
+ .ppe-report-frame-card span { color: #607589; }
+ .ppe-report-disclaimer { margin-top: 18px !important; color: #698198; font-size: 11px !important; }
+-.ppe-report-controls {
+-  align-self: start;
+-  padding: 20px;
++.ppe-report-evidence-workspace {
++  min-width: 0;
++  padding: 19px;
+   border: 1px solid #dce7ef;
+   border-radius: 11px;
+   background: #fff;
++}
++.ppe-report-evidence-heading, .ppe-report-evidence-actions, .ppe-report-selected-heading {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  gap: 14px;
++}
++.ppe-report-evidence-heading { margin-bottom: 15px; flex-wrap: wrap; }
++.ppe-report-evidence-heading h3 { font-size: 18px; margin: 0 0 5px; }
++.ppe-report-evidence-heading p { font-size: 12px; color: #667d91; margin: 0; }
++.ppe-report-evidence-actions { flex-wrap: wrap; }
++.ppe-report-count { border-radius: 18px; padding: 7px 11px; color: #126341; background: #e8f7ee; font-weight: 800; font-size: 12px; white-space: nowrap; }
++.ppe-report-evidence-columns { display: grid; grid-template-columns: 1fr 1.12fr; gap: 15px; min-width: 0; }
++.ppe-report-controls {
++  padding: 15px;
++  border: 1px solid #dce7ef;
++  border-radius: 11px;
++  background: #f8fbfd;
+   min-width: 0;
+ }
+-.ppe-report-controls h3 { margin: 0 0 5px; font-size: 16px; }
+-.ppe-report-controls > p { color: #60798c; font-size: 12px; line-height: 1.55; margin: 5px 0 13px; }
++.ppe-report-controls h4, .ppe-report-selected-panel h4 { margin: 0 0 6px; font-size: 14px; }
++.ppe-report-controls > p { margin: 5px 0 10px; }
+ .ppe-report-selection-summary { display: flex; justify-content: space-between; align-items: center; gap: 9px; padding: 13px 0; border-top: 1px solid #e1eaf0; font-size: 12px; }
+ .ppe-report-selection-summary span { color: #4c8668; text-align: right; }
+-.ppe-report-reset { width: 100%; margin-bottom: 10px; }
+-.ppe-report-frame-options { max-height: 380px; overflow-y: auto; border-top: 1px solid #e1eaf0; }
+-.ppe-report-frame-option { display: flex; gap: 12px; align-items: start; padding: 12px 3px; border-bottom: 1px solid #e1eaf0; cursor: pointer; }
+-.ppe-report-frame-option input { accent-color: #158252; margin-top: 3px; flex-shrink: 0; }
++.ppe-report-reset { white-space: nowrap; }
++.ppe-report-frame-options { height: 390px; overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid #e1eaf0; }
++.ppe-report-frame-option { display: flex; gap: 10px; align-items: center; padding: 11px 6px; border-bottom: 1px solid #e1eaf0; cursor: pointer; border-radius: 7px; }
++.ppe-report-frame-option.is-selected { background: #eaf7f0; }
++.ppe-report-frame-option input { accent-color: #158252; margin: 0; flex-shrink: 0; }
++.ppe-report-option-image { flex: 0 0 76px; width: 76px; }
++.ppe-report-option-image .ppe-report-thumbnail, .ppe-report-option-image .ppe-report-image-missing { height: 54px; border-radius: 5px; }
++.ppe-report-option-image .ppe-report-image-missing { font-size: 9px; text-align: center; }
+ .ppe-report-frame-option span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+ .ppe-report-frame-option strong { font-size: 12px; }
+ .ppe-report-frame-option small { font-size: 11px; color: #74869b; line-height: 1.45; overflow-wrap: anywhere; }
++.ppe-report-recommendation { font-style: normal; font-size: 10px; line-height: 1.4; color: #13754b; font-weight: 700; }
++.ppe-report-selected-panel { min-width: 0; border: 1px solid #dce7ef; border-radius: 11px; padding: 15px; background: #f8fbfd; }
++.ppe-report-selected-heading span { color: #668096; font-size: 11px; }
++.ppe-report-selected-scroll { height: 416px; overflow-y: auto; overscroll-behavior: contain; padding: 6px 2px 0; }
++.ppe-report-selected-grid .ppe-report-thumbnail, .ppe-report-selected-grid .ppe-report-image-missing { height: 112px; }
++.ppe-report-remove-frame { align-self: start; border: 0; background: none; color: #a03636; font: inherit; font-weight: 750; padding: 0; cursor: pointer; }
++.ppe-report-remove-frame:hover { text-decoration: underline; }
++.ppe-report-evidence-note { color: #688199; font-size: 11px; line-height: 1.5; margin: 12px 0 0; }
+ .ppe-report-footer { border-top: 1px solid #dce5ef; flex-wrap: wrap; }
+ .ppe-report-footer > span { font-size: 11px; color: #60798c; }
+ .ppe-report-footer > div { display: flex; gap: 10px; align-items: center; margin-left: auto; }
+@@ -98,26 +128,32 @@
+ 
+ .dashboard.dark-theme .ppe-report-dialog { background: #102035; color: #e8f2fb; }
+ .dashboard.dark-theme .ppe-report-header, .dashboard.dark-theme .ppe-report-footer,
+-.dashboard.dark-theme .ppe-report-controls { background: #172b44; border-color: #335371; }
++.dashboard.dark-theme .ppe-report-evidence-workspace,
++.dashboard.dark-theme .ppe-report-controls, .dashboard.dark-theme .ppe-report-selected-panel { background: #172b44; border-color: #335371; }
+ .dashboard.dark-theme .ppe-report-header p,
+ .dashboard.dark-theme .ppe-report-controls > p,
++.dashboard.dark-theme .ppe-report-evidence-heading p,
++.dashboard.dark-theme .ppe-report-evidence-note,
+ .dashboard.dark-theme .ppe-report-footer > span { color: #b6c8db; }
+ .dashboard.dark-theme .ppe-report-frame-options,
+ .dashboard.dark-theme .ppe-report-frame-option,
+ .dashboard.dark-theme .ppe-report-selection-summary { border-color: #36516e; }
+ .dashboard.dark-theme .ppe-report-frame-option small { color: #b0c4d7; }
++.dashboard.dark-theme .ppe-report-frame-option.is-selected { background: #234f44; }
++.dashboard.dark-theme .ppe-report-recommendation { color: #8ee3b6; }
+ /* The document preview intentionally resembles the light paper PDF in both themes. */
+ 
+ @media (max-width: 900px) {
+-  .ppe-report-content { grid-template-columns: 1fr; }
+-  .ppe-report-frame-options { max-height: 230px; }
++  .ppe-report-evidence-columns { grid-template-columns: 1fr; }
++  .ppe-report-frame-options, .ppe-report-selected-scroll { height: 245px; }
+ }
+ @media (max-width: 600px) {
+   .ppe-report-backdrop { padding: 7px; }
+   .ppe-report-dialog { max-height: calc(100vh - 14px); }
+   .ppe-report-content { padding: 13px; }
+   .ppe-report-header, .ppe-report-footer { padding: 13px; }
+-  .ppe-report-paper, .ppe-report-controls { padding: 16px; }
++  .ppe-report-paper, .ppe-report-controls, .ppe-report-selected-panel, .ppe-report-evidence-workspace { padding: 13px; }
+   .ppe-report-selected-grid { grid-template-columns: 1fr; }
+   .ppe-report-header h2 { font-size: 19px; }
++  .ppe-report-evidence-actions { width: 100%; }
+ }
+diff --git a/my-app/src/ReportPreview.jsx b/my-app/src/ReportPreview.jsx
+index e7600d1..f2a46b4 100644
+--- a/my-app/src/ReportPreview.jsx
++++ b/my-app/src/ReportPreview.jsx
+@@ -19,6 +19,17 @@ function ppeLabel(value) {
+   return { yes: 'Reported missing', no: 'No violation reported', unclear: 'Unclear' }[value] || 'Not recorded';
+ }
+ 
++function recommendationReason(frame) {
++  const missing = ['helmet', 'vest', 'boots'].filter((item) => frame[`${item}_violation`] === 'yes');
++  if (missing.length > 1) return 'Multiple reported PPE concerns';
++  if (missing.length === 1) return `Reported ${missing[0]} concern`;
++  if (['helmet', 'vest', 'boots'].some((item) => frame[`${item}_violation`] === 'unclear')) {
++    return 'Unclear PPE assessment';
++  }
++  if (frame.overall_status === 'compliant') return 'Compliant context';
++  return 'Additional time coverage';
++}
++
+ function displayTime(value) {
+   if (!value || Number.isNaN(Date.parse(value))) return 'Not recorded';
+   return new Intl.DateTimeFormat('en-SG', {
+@@ -162,53 +173,80 @@ export default function ReportPreview({ incident, frames, review, onClose }) {
+             {latestResolution?.notes && (
+               <p className="ppe-report-secondary">Corrective action: {latestResolution.notes}</p>
+             )}
+-            <h4>Selected evidence ({shownFrames.length})</h4>
+-            {loading ? <p className="ppe-report-secondary">Checking saved evidence…</p> :
+-              shownFrames.length ? (
+-                <div className="ppe-report-selected-grid">
+-                  {shownFrames.map((frame) => (
+-                    <article className="ppe-report-frame-card" key={frame.id}>
+-                      <EvidenceThumbnail src={frame.evidence_url}
+-                        alt={`Evidence at ${videoTime(frame.video_seconds)}`} />
+-                      <div>
+-                        <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Saved photograph'}</strong>
+-                        <span>{frame.overall_status} · Helmet: {ppeLabel(frame.helmet_violation)}</span>
+-                        <span>Vest: {ppeLabel(frame.vest_violation)} · Boots: {ppeLabel(frame.boots_violation)}</span>
+-                      </div>
+-                    </article>
+-                  ))}
+-                </div>
+-              ) : <p className="ppe-report-secondary">No saved evidence selected. You can still export the incident record.</p>}
+-            <p className="ppe-report-disclaimer">Preview layout only. The downloaded PDF uses the same saved incident data and selected frames. An entire source video is not embedded.</p>
++            <p className="ppe-report-disclaimer">The downloaded PDF uses saved incident data and selected frames. It does not embed the original playable video.</p>
+           </div>
+ 
+-          <aside className="ppe-report-controls" aria-label="Select frames for the report">
+-            <h3>Evidence selection</h3>
+-            <p>Automatically recommended frames can be changed before export.</p>
+-            <div className="ppe-report-selection-summary">
+-              <strong>{selectedIds.length} / {MAX_FRAMES} selected</strong>
+-              <span>{selectionMode === 'automatic' ? 'Automatic recommendations' : 'Manually customised'}</span>
++          <section className="ppe-report-evidence-workspace" aria-label="Choose and preview report evidence">
++            <div className="ppe-report-evidence-heading">
++              <div>
++                <h3>Evidence for this report</h3>
++                <p>Select a frame on the left and immediately see it in the report on the right.</p>
++              </div>
++              <div className="ppe-report-evidence-actions">
++                <span className="ppe-report-count">{selectedIds.length} / {MAX_FRAMES} selected</span>
++                <button type="button" className="outline-button ppe-report-reset"
++                  disabled={loading} onClick={resetRecommendations}>Reset to automatic</button>
++              </div>
+             </div>
+-            <button type="button" className="outline-button ppe-report-reset"
+-              disabled={loading} onClick={resetRecommendations}>Reset to automatic selection</button>
+-            <div className="ppe-report-frame-options">
+-              {loading ? <p>Loading available frames…</p> :
+-                sortedFrames.filter((frame) => available.has(frame.id)).length ?
+-                  sortedFrames.filter((frame) => available.has(frame.id)).map((frame) => (
+-                    <label key={frame.id} className="ppe-report-frame-option">
+-                      <input type="checkbox" checked={selectedIds.includes(frame.id)}
+-                        disabled={!selectedIds.includes(frame.id) && selectedIds.length >= MAX_FRAMES}
+-                        onChange={() => toggleFrame(frame.id)} />
+-                      <span>
+-                        <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Image evidence'}</strong>
+-                        <small>{frame.overall_status} · {['helmet', 'vest', 'boots']
+-                          .filter((ppe) => frame[`${ppe}_violation`] === 'yes').join(', ') || 'No definite missing PPE'}</small>
+-                      </span>
+-                    </label>
+-                  )) : <p className="ppe-report-secondary">No retrievable saved photographs are available for this incident.</p>}
++            <div className="ppe-report-evidence-columns">
++              <div className="ppe-report-controls">
++                <h4>Available frames</h4>
++                <p className="ppe-report-secondary">{selectionMode === 'automatic'
++                  ? 'Automatically recommended frames are checked.'
++                  : 'Manual selection applied. Reset to restore recommendations.'}</p>
++                <div className="ppe-report-frame-options">
++                  {loading ? <p>Loading available frames…</p> :
++                    sortedFrames.filter((frame) => available.has(frame.id)).length ?
++                      sortedFrames.filter((frame) => available.has(frame.id)).map((frame) => (
++                        <label key={frame.id} className={`ppe-report-frame-option ${selectedIds.includes(frame.id) ? 'is-selected' : ''}`}>
++                          <input type="checkbox" checked={selectedIds.includes(frame.id)}
++                            disabled={!selectedIds.includes(frame.id) && selectedIds.length >= MAX_FRAMES}
++                            onChange={() => toggleFrame(frame.id)} />
++                          <div className="ppe-report-option-image">
++                            <EvidenceThumbnail src={frame.evidence_url}
++                              alt={`Available evidence at ${videoTime(frame.video_seconds)}`} />
++                          </div>
++                          <span>
++                            <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Image evidence'}</strong>
++                            <small>{frame.overall_status} · {['helmet', 'vest', 'boots']
++                              .filter((ppe) => frame[`${ppe}_violation`] === 'yes').join(', ') || 'No definite missing PPE'}</small>
++                            {recommendedIds.includes(frame.id) && (
++                              <em className="ppe-report-recommendation">★ Suggested: {recommendationReason(frame)}</em>
++                            )}
++                          </span>
++                        </label>
++                      )) : <p className="ppe-report-secondary">No retrievable saved photographs are available for this incident.</p>}
++                </div>
++              </div>
++              <div className="ppe-report-selected-panel">
++                <div className="ppe-report-selected-heading">
++                  <h4>Selected evidence preview</h4>
++                  <span>{shownFrames.length} frame(s)</span>
++                </div>
++                <div className="ppe-report-selected-scroll">
++                  {loading ? <p className="ppe-report-secondary">Checking saved evidence…</p> :
++                    shownFrames.length ? (
++                      <div className="ppe-report-selected-grid">
++                        {shownFrames.map((frame) => (
++                          <article className="ppe-report-frame-card" key={frame.id}>
++                            <EvidenceThumbnail src={frame.evidence_url}
++                              alt={`Selected evidence at ${videoTime(frame.video_seconds)}`} />
++                            <div>
++                              <strong>{incident.videoName ? videoTime(frame.video_seconds) : 'Saved photograph'}</strong>
++                              <span>{frame.overall_status} · Helmet: {ppeLabel(frame.helmet_violation)}</span>
++                              <span>Vest: {ppeLabel(frame.vest_violation)} · Boots: {ppeLabel(frame.boots_violation)}</span>
++                              <button type="button" className="ppe-report-remove-frame"
++                                onClick={() => toggleFrame(frame.id)}>Remove from PDF</button>
++                            </div>
++                          </article>
++                        ))}
++                      </div>
++                    ) : <p className="ppe-report-secondary">No evidence selected. The PDF will still include the incident record.</p>}
++                </div>
++              </div>
+             </div>
+-            <p className="ppe-report-secondary">The summary includes at most six saved frames. Frame counts do not represent unique workers.</p>
+-          </aside>
++            <p className="ppe-report-evidence-note">The summary includes at most six saved frames. Automatic suggestions use reported PPE concerns and time coverage, not verified severity. Repeated frames may show the same worker.</p>
++          </section>
+         </div>
+ 
+         <footer className="ppe-report-footer">
+diff --git a/my-app/src/VideoSampler.jsx b/my-app/src/VideoSampler.jsx
+index 65408ba..e314943 100644
+--- a/my-app/src/VideoSampler.jsx
++++ b/my-app/src/VideoSampler.jsx
+@@ -1,4 +1,6 @@
+ import { useEffect, useRef, useState } from 'react';
++import { buildFrameTimestamps, estimateFrameCount, LARGE_JOB_FRAME_THRESHOLD,
++  validSamplingInterval } from './videoSampling';
+ 
+ /**
+  * Extracts frames from a locally selected video. The whole video stays in the
+@@ -13,8 +15,10 @@ export default function VideoSampler({
+   disabled = false,
+   externalFile = null,
+   externalIntervalSeconds = null,
++  allowLargeWorkload = true,
+   controlsHidden = false,
+   startRef = null,
++  stopRef = null,
+ }) {
+   const [file, setFile] = useState(null);
+   const [intervalSeconds, setIntervalSeconds] = useState(60);
+@@ -57,9 +61,15 @@ export default function VideoSampler({
+       if (!video.videoWidth || !video.videoHeight) {
+         throw new Error('No usable video frames were found.');
+       }
++      if (!validSamplingInterval(chosenInterval)) {
++        throw new Error('Choose a valid whole-number sample interval between 1 and 300 seconds.');
++      }
+ 
+-      const timestamps = [];
+-      for (let t = 0; t < duration; t += chosenInterval) timestamps.push(t);
++      const frameCount = estimateFrameCount(duration, chosenInterval);
++      if (frameCount > LARGE_JOB_FRAME_THRESHOLD && !allowLargeWorkload) {
++        throw new Error(`This video would analyse ${frameCount} frames. Confirm the large workload before starting.`);
++      }
++      const timestamps = buildFrameTimestamps(duration, chosenInterval);
+ 
+       const canvas = document.createElement('canvas');
+       const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+@@ -124,12 +134,14 @@ export default function VideoSampler({
+ 
+   useEffect(() => {
+     if (startRef) startRef.current = startAnalysis;
++    if (stopRef) stopRef.current = () => { stopRequested.current = true; };
+     return () => {
+       if (startRef && startRef.current === startAnalysis) {
+         startRef.current = null;
+       }
++      if (stopRef) stopRef.current = null;
+     };
+-  }, [startRef, startAnalysis]);
++  }, [startRef, stopRef, startAnalysis]);
+ 
+   if (controlsHidden) return null;
+ 
+diff --git a/my-app/src/videoSampling.js b/my-app/src/videoSampling.js
+new file mode 100644
+index 0000000..d053663
+--- /dev/null
++++ b/my-app/src/videoSampling.js
+@@ -0,0 +1,20 @@
++// Shared by the upload form's estimate and the video-frame extractor.
++// The first frame is always sampled at 0 seconds; the last sample is before the end.
++export const LARGE_JOB_FRAME_THRESHOLD = 60;
++
++export function validSamplingInterval(seconds) {
++  return Number.isInteger(seconds) && seconds >= 1 && seconds <= 300;
++}
++
++export function estimateFrameCount(duration, intervalSeconds) {
++  if (!Number.isFinite(duration) || duration <= 0 || !validSamplingInterval(intervalSeconds)) {
++    return null;
++  }
++  return Math.ceil(duration / intervalSeconds);
++}
++
++export function buildFrameTimestamps(duration, intervalSeconds) {
++  const count = estimateFrameCount(duration, intervalSeconds);
++  if (count === null) throw new Error('Video duration or sample interval is invalid.');
++  return Array.from({ length: count }, (_, index) => index * intervalSeconds);
++}
+diff --git a/my-app/tests/videoSampling.test.mjs b/my-app/tests/videoSampling.test.mjs
+new file mode 100644
+index 0000000..3a54621
+--- /dev/null
++++ b/my-app/tests/videoSampling.test.mjs
+@@ -0,0 +1,31 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildFrameTimestamps, estimateFrameCount, LARGE_JOB_FRAME_THRESHOLD,
++  validSamplingInterval } from '../src/videoSampling.js';
++
++test('frame estimates match timestamps for regular and custom intervals', () => {
++  for (const [duration, interval, expected] of [
++    [300, 60, 5], [300, 10, 30], [300, 5, 60], [300, 20, 15],
++    [121, 20, 7], [0.7, 1, 1],
++  ]) {
++    assert.equal(estimateFrameCount(duration, interval), expected);
++    const timestamps = buildFrameTimestamps(duration, interval);
++    assert.equal(timestamps.length, expected);
++    assert.equal(timestamps[0], 0);
++    assert.ok(timestamps.every((value) => value < duration));
++  }
++});
++
++test('invalid intervals and durations are rejected', () => {
++  for (const invalid of [0, -1, 0.5, 301, Infinity, NaN]) {
++    assert.equal(validSamplingInterval(invalid), false);
++    assert.equal(estimateFrameCount(300, invalid), null);
++  }
++  assert.equal(estimateFrameCount(0, 10), null);
++  assert.throws(() => buildFrameTimestamps(120, 0));
++});
++
++test('large workload threshold is exceeded only above sixty frames', () => {
++  assert.equal(estimateFrameCount(300, 5) > LARGE_JOB_FRAME_THRESHOLD, false);
++  assert.equal(estimateFrameCount(301, 5) > LARGE_JOB_FRAME_THRESHOLD, true);
++});

@@ -407,6 +407,7 @@ body:has(.dashboard.dark-theme) {
 .modal-backdrop { position: fixed; z-index: 30; inset: 0; background: rgba(2,6,23,.65); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .detail-modal { background: #fff; color: #172033; width: min(560px, 100%); max-height: 90vh; overflow-y: auto; border-radius: 15px; padding: 26px; box-shadow: 0 20px 65px rgba(0,0,0,.3); }
 .modal-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ppe-modal-heading-actions { display: flex; gap: 9px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin: 24px 0; }
 .detail-grid dt { color: #64748b; font-size: 12px; margin-bottom: 5px; }
 .detail-grid dd { margin: 0; font-weight: 650; font-size: 14px; }
@@ -1177,4 +1178,824 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
   .ppe-app-shell .dashboard .header-actions {
     width: 100%;
   }
+}
+
+/* Stage 2: compact incident search and filtering on the active/history pages. */
+.ppe-incident-filters {
+  display: grid;
+  grid-template-columns: minmax(175px, 1.6fr) repeat(3, minmax(125px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin-top: 20px;
+  padding: 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+
+.ppe-incident-filters label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ppe-incident-filters input,
+.ppe-incident-filters select {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #172033;
+  font: inherit;
+  font-size: 13px;
+}
+
+.ppe-incident-filters input:focus-visible,
+.ppe-incident-filters select:focus-visible,
+.ppe-incident-filters button:focus-visible {
+  outline: 2px solid #16a34a;
+  outline-offset: 2px;
+}
+
+.ppe-incident-filters .ppe-clear-filters {
+  height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #94a3b8;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.ppe-incident-filters .ppe-clear-filters:hover {
+  background: #e2e8f0;
+}
+
+.ppe-incident-table-date {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ppe-app-shell.dark-theme .ppe-incident-filters {
+  background: #192b40;
+  border-color: #36516e;
+}
+
+.ppe-app-shell.dark-theme .ppe-incident-filters label {
+  color: #b4c8df;
+}
+
+.ppe-app-shell.dark-theme .ppe-incident-filters input,
+.ppe-app-shell.dark-theme .ppe-incident-filters select {
+  background: #14243a;
+  border-color: #46617f;
+  color: #f1f5f9;
+}
+
+.ppe-app-shell.dark-theme .ppe-incident-filters .ppe-clear-filters {
+  border-color: #46617f;
+  color: #dbeafe;
+}
+
+.ppe-app-shell.dark-theme .ppe-incident-filters .ppe-clear-filters:hover {
+  background: #234365;
+}
+
+@media (max-width: 1100px) {
+  .ppe-incident-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ppe-incident-filters .ppe-clear-filters {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 580px) {
+  .ppe-incident-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ppe-incident-filters .ppe-clear-filters {
+    width: 100%;
+  }
+}
+
+/* Stage 3: SQLite-backed monitoring analytics. */
+.ppe-monitoring-page { min-width: 0; }
+.ppe-monitoring-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ppe-monitoring-heading h2 { margin: 0 0 7px; font-size: 25px; letter-spacing: -.6px; }
+.ppe-monitoring-heading .eyebrow { margin-bottom: 7px; }
+.ppe-analytics-badge {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+  padding: 6px 10px;
+  color: #26734f;
+  background: #eaf7ee;
+  border: 1px solid #c9e6d3;
+}
+.ppe-monitoring-notice {
+  margin: 0 0 20px;
+  padding: 13px 15px;
+  border-radius: 10px;
+  border: 1px solid #c5e0f5;
+  border-left: 4px solid #6aabcd;
+  background: #eff8ff;
+  color: #365b77;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ppe-analytics-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+.ppe-analytics-control-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #698295;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .5px;
+}
+.ppe-analytics-periods {
+  display: inline-flex;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid #d5e3eb;
+  border-radius: 11px;
+  background: #eaf0f4;
+}
+.ppe-analytics-periods button {
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #617d91;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.ppe-analytics-periods button.selected {
+  background: #fff;
+  color: #166842;
+  box-shadow: 0 2px 6px #1d3e5718;
+}
+.ppe-analytics-periods button:focus-visible,
+.ppe-analytics-controls select:focus-visible,
+.ppe-analytics-reload:focus-visible {
+  outline: 2px solid #16a34a;
+  outline-offset: 2px;
+}
+.ppe-analytics-control-right { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px; }
+.ppe-analytics-controls select {
+  width: min(250px, 100%);
+  min-width: 170px;
+  height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #cbdbe5;
+  border-radius: 9px;
+  color: #314e62;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 650;
+}
+.ppe-analytics-reload {
+  height: 42px;
+  padding: 9px 13px;
+  color: #27774e;
+  background: #f8fcfa;
+  border: 1px solid #9ac8ae;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 750;
+}
+.ppe-analytics-loading { padding: 25px; text-align: center; }
+.ppe-analytics-error {
+  margin-bottom: 18px;
+  padding: 12px 15px;
+  color: #9f2f2f;
+  background: #fff1f1;
+  border: 1px solid #f7c6c6;
+  border-radius: 9px;
+}
+.ppe-analytics-metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; margin-bottom: 18px; }
+.ppe-analytics-metric {
+  min-width: 0;
+  min-height: 130px;
+  padding: 18px 19px;
+  background: #fff;
+  border: 1px solid #e1eaf0;
+  box-shadow: 0 3px 15px #1e344208;
+  border-radius: 13px;
+}
+.ppe-analytics-metric p { color: #748b9a; font-size: 12px; font-weight: 650; margin: 0 0 12px; }
+.ppe-analytics-metric strong { display: block; font-size: 29px; letter-spacing: -1px; color: #203d50; }
+.ppe-analytics-metric small { display: block; margin-top: 9px; font-size: 11px; line-height: 1.5; color: #8299a9; }
+.ppe-analytics-upper-grid { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(295px,.85fr); gap: 17px; }
+.ppe-analytics-lower-grid { display: grid; grid-template-columns: minmax(0,1.07fr) minmax(0,.93fr); gap: 17px; margin-top: 17px; }
+.ppe-analytics-panel { min-width: 0; margin-bottom: 0; }
+.ppe-analytics-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.ppe-analytics-panel-head h2 { font-size: 17px; margin: 0 0 6px; }
+.ppe-analytics-panel-head .muted { margin: 0; font-size: 11px; }
+.ppe-analytics-trend-chart { width: 100%; height: 290px; margin-top: 20px; }
+.ppe-analytics-empty { padding: 42px 8px; text-align: center; }
+.ppe-analytics-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 9px; color: #647b8d; font-size: 11px; }
+.ppe-analytics-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ppe-analytics-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+.ppe-analytics-legend i.compliant { background: #52af83; }
+.ppe-analytics-legend i.violation { background: #ef806f; }
+.ppe-analytics-legend i.unclear { background: #e9b55d; }
+.ppe-analytics-legend i.other { background: #95abbc; }
+.ppe-analytics-category-list { display: grid; gap: 21px; margin-top: 25px; }
+.ppe-analytics-category > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 9px; font-size: 12px; font-weight: 700; }
+.ppe-analytics-category strong { font-size: 14px; }
+.ppe-analytics-category-track { overflow: hidden; height: 10px; background: #edf2f6; border-radius: 99px; }
+.ppe-analytics-category-track > span { display: block; height: 100%; border-radius: 99px; background: #57a98a; }
+.ppe-analytics-category:nth-child(2) .ppe-analytics-category-track > span { background: #80a7d3; }
+.ppe-analytics-category:nth-child(3) .ppe-analytics-category-track > span { background: #d5a869; }
+.ppe-analytics-category:nth-child(4) .ppe-analytics-category-track > span { background: #b9a2ce; }
+.ppe-analytics-explainer { margin: 24px 0 0; padding: 12px 13px; background: #f6f9fb; border: 1px solid #e2edf2; border-radius: 9px; color: #647e8c; font-size: 11px; line-height: 1.6; }
+.ppe-analytics-table-wrap { width: 100%; overflow-x: auto; margin-top: 17px; }
+.ppe-analytics-table-wrap table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ppe-analytics-table-wrap th { background: transparent; text-align: left; border-bottom: 1px solid #e4ecf2; color: #8499a8; font-size: 10px; letter-spacing: .3px; text-transform: uppercase; white-space: nowrap; padding: 11px 8px; }
+.ppe-analytics-table-wrap td { border-bottom: 1px solid #edf2f5; padding: 13px 8px; font-size: 12px; }
+.ppe-analytics-table-wrap tr:last-child td { border-bottom: 0; }
+.ppe-analytics-table-wrap td strong { color: #2b485b; overflow-wrap: anywhere; }
+.ppe-analytics-rate { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.ppe-analytics-rate > i { display: inline-block; width: 58px; height: 7px; border-radius: 99px; overflow: hidden; background: #e8eff3; }
+.ppe-analytics-rate > i > span { display: block; height: 100%; background: #5cad86; }
+.ppe-analytics-disclaimer { margin: 20px 0 0; font-size: 11px; line-height: 1.6; }
+
+.ppe-app-shell.dark-theme .ppe-analytics-badge { color: #9ae6bb; background: #193a32; border-color: #356c4f; }
+.ppe-app-shell.dark-theme .ppe-monitoring-notice { color: #c0d9e9; background: #192f43; border-color: #355972; }
+.ppe-app-shell.dark-theme .ppe-analytics-control-label { color: #b4c8df; }
+.ppe-app-shell.dark-theme .ppe-analytics-periods { background: #192b40; border-color: #36516e; }
+.ppe-app-shell.dark-theme .ppe-analytics-periods button { color: #b4c8df; }
+.ppe-app-shell.dark-theme .ppe-analytics-periods button.selected { background: #214b3c; color: #b4f5cc; }
+.ppe-app-shell.dark-theme .ppe-analytics-controls select,
+.ppe-app-shell.dark-theme .ppe-analytics-reload { color: #e2e8f0; background: #192b40; border-color: #46617f; }
+.ppe-app-shell.dark-theme .ppe-analytics-metric { background: #14243a; border-color: #36516e; }
+.ppe-app-shell.dark-theme .ppe-analytics-metric p,
+.ppe-app-shell.dark-theme .ppe-analytics-metric small { color: #a8bbd0; }
+.ppe-app-shell.dark-theme .ppe-analytics-metric strong,
+.ppe-app-shell.dark-theme .ppe-analytics-table-wrap td strong { color: #e2e8f0; }
+.ppe-app-shell.dark-theme .ppe-analytics-table-wrap th,
+.ppe-app-shell.dark-theme .ppe-analytics-table-wrap td { border-color: #2b4058; }
+.ppe-app-shell.dark-theme .ppe-analytics-explainer { color: #b4c8df; background: #1a334c; border-color: #35516d; }
+.ppe-app-shell.dark-theme .ppe-analytics-category-track,
+.ppe-app-shell.dark-theme .ppe-analytics-rate > i { background: #2b4058; }
+.ppe-app-shell.dark-theme .ppe-analytics-legend { color: #b4c8df; }
+
+@media (max-width: 1220px) {
+  .ppe-analytics-upper-grid, .ppe-analytics-lower-grid { grid-template-columns: 1fr; }
+  .ppe-analytics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .ppe-monitoring-heading h2 { font-size: 21px; }
+  .ppe-analytics-periods { display: flex; width: 100%; }
+  .ppe-analytics-periods button { flex: 1; padding: 10px 7px; font-size: 11px; }
+  .ppe-analytics-controls, .ppe-analytics-control-right, .ppe-analytics-control-right label { width: 100%; }
+  .ppe-analytics-controls select { width: 100%; }
+  .ppe-analytics-metric { min-height: 116px; padding: 14px; }
+  .ppe-analytics-metric strong { font-size: 24px; }
+  .ppe-analytics-trend-chart { height: 245px; }
+}
+
+/* Stage 4: evidence-first review inside the existing incident Details dialog. */
+.dashboard .detail-modal {
+  width: min(940px, 100%);
+}
+
+.detail-modal .incident-frame-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(240px, .8fr);
+  gap: 22px;
+  margin-top: 18px;
+}
+
+.detail-modal .incident-frame-history {
+  max-height: 350px;
+  overflow: auto;
+  border: 1px solid #e1e9f0;
+  border-radius: 9px;
+}
+
+.detail-modal .incident-frame-history table {
+  width: 100%;
+}
+
+.detail-modal .incident-frame-history th {
+  position: sticky;
+  top: 0;
+  background: #f3f7fa;
+  z-index: 1;
+}
+
+.detail-modal .ppe-evidence-zoom-trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: #101b2c;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.detail-modal .ppe-evidence-zoom-trigger:focus-visible {
+  outline: 3px solid #47b689;
+  outline-offset: 3px;
+}
+
+.detail-modal .ppe-evidence-zoom-trigger img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border: 0;
+}
+
+.detail-modal .ppe-evidence-zoom-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: rgba(10, 24, 39, .88);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+/* Evidence requests are independent of the saved incident and review. */
+.ppe-evidence-surface {
+  position: relative;
+  min-height: 160px;
+  width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #101b2c;
+}
+.detail-modal .ppe-evidence-surface .ppe-evidence-zoom-trigger:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.ppe-evidence-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+  padding: 20px;
+  text-align: center;
+  color: #e9f2fa;
+  background: #172b41;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.ppe-evidence-status p { margin: 0; color: #c5d8e9; }
+.ppe-evidence-status .outline-button {
+  color: #fff;
+  background: #274967;
+  border-color: #668aa7;
+  min-height: 37px;
+}
+.ppe-evidence-status .outline-button:hover { background: #345c80; }
+.ppe-evidence-expanded { width: auto; max-width: 100%; min-width: min(420px, 88vw); }
+.ppe-evidence-lightbox .ppe-evidence-expanded img { max-height: calc(100vh - 180px); }
+.ppe-evidence-lightbox .ppe-evidence-expanded .ppe-evidence-status { min-height: 160px; }
+
+.detail-modal .ppe-worker-review {
+  margin-top: 24px;
+  padding: 19px;
+  border: 1px solid #dce7ef;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.detail-modal .ppe-worker-review-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.detail-modal .ppe-worker-review-heading h3 { margin: 0 0 5px; font-size: 16px; }
+.detail-modal .ppe-worker-review-heading p { margin: 0; color: #607e94; font-size: 12px; line-height: 1.55; }
+.detail-modal .ppe-worker-count { padding: 6px 9px; border-radius: 30px; background: #e8f6ef; color: #246c49; white-space: nowrap; font-size: 11px; font-weight: 800; }
+.detail-modal .ppe-worker-table-scroll { overflow-x: auto; border: 1px solid #e3ebf1; border-radius: 9px; }
+.detail-modal .ppe-worker-table-scroll table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.detail-modal .ppe-worker-table-scroll th { padding: 11px 14px; background: #f5f8fb; color: #698295; font-size: 11px; text-align: left; white-space: nowrap; }
+.detail-modal .ppe-worker-table-scroll td { padding: 13px 14px; border-top: 1px solid #e9eff3; }
+.detail-modal .ppe-worker-position { min-width: 120px; max-width: 260px; font-weight: 750; overflow-wrap: anywhere; }
+.detail-modal .ppe-worker-status { display: inline-block; padding: 5px 9px; border-radius: 7px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.detail-modal .ppe-worker-status.worn { color: #187047; background: #e2f5e9; }
+.detail-modal .ppe-worker-status.missing { color: #b43c33; background: #ffebe8; }
+.detail-modal .ppe-worker-status.unclear { color: #92651d; background: #fff2d8; }
+.detail-modal .ppe-worker-status.not-recorded { color: #536b7f; background: #edf2f6; }
+.detail-modal .ppe-worker-empty { margin: 0; padding: 14px; color: #678094; background: #f5f8fb; border-radius: 8px; font-size: 12px; line-height: 1.6; }
+.detail-modal .ppe-worker-unclear-note,
+.detail-modal .ppe-worker-consistency-note { margin: 14px 0 0; padding: 12px 14px; color: #7b5a23; background: #fff7e7; border: 1px solid #f2dba7; border-radius: 9px; font-size: 12px; line-height: 1.6; }
+
+.ppe-evidence-lightbox {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  padding: 72px 24px 28px;
+  background: rgba(5, 15, 28, .95);
+  color: #e9f2fa;
+}
+.ppe-evidence-lightbox img { display: block; max-width: 100%; max-height: calc(100vh - 180px); object-fit: contain; border-radius: 9px; }
+.ppe-evidence-lightbox p { margin: 0; font-size: 12px; color: #c6d7e6; text-align: center; }
+.ppe-evidence-lightbox .ppe-lightbox-close { position: absolute; top: 19px; right: 24px; padding: 9px 15px; border: 1px solid #6f8ca4; border-radius: 8px; background: #1e3a50; color: #fff; font-weight: 750; }
+.ppe-evidence-lightbox .ppe-lightbox-close:focus-visible { outline: 3px solid #47b689; outline-offset: 3px; }
+
+.dashboard.dark-theme .detail-modal .ppe-worker-review { background: #14243a; border-color: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-worker-review-heading p { color: #b4c8df; }
+.dashboard.dark-theme .detail-modal .ppe-worker-count { background: #1d4739; color: #b6f1ce; }
+.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll,
+.dashboard.dark-theme .detail-modal .incident-frame-history { border-color: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll th,
+.dashboard.dark-theme .detail-modal .incident-frame-history th { color: #b4c8df; background: #1d3450; }
+.dashboard.dark-theme .detail-modal .ppe-worker-table-scroll td { border-color: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-worker-status.worn { color: #b8f0cc; background: #224d37; }
+.dashboard.dark-theme .detail-modal .ppe-worker-status.missing { color: #ffc4bb; background: #542a2a; }
+.dashboard.dark-theme .detail-modal .ppe-worker-status.unclear { color: #ffe3a2; background: #503a1d; }
+.dashboard.dark-theme .detail-modal .ppe-worker-status.not-recorded { color: #c2d4e4; background: #344b60; }
+.dashboard.dark-theme .detail-modal .ppe-worker-empty { color: #b4c8df; background: #1d3450; }
+.dashboard.dark-theme .detail-modal .ppe-worker-unclear-note,
+.dashboard.dark-theme .detail-modal .ppe-worker-consistency-note { color: #ffe3a2; background: #49391f; border-color: #816033; }
+
+@media (max-width: 780px) {
+  .detail-modal .incident-frame-review { grid-template-columns: 1fr; }
+  .detail-modal .incident-frame-history { max-height: 230px; }
+}
+@media (max-width: 560px) {
+  .dashboard .detail-modal { padding: 16px; }
+  .detail-modal .ppe-worker-review { padding: 13px; }
+  .detail-modal .ppe-worker-review-heading { flex-wrap: wrap; }
+  .detail-modal .ppe-worker-table-scroll th,
+  .detail-modal .ppe-worker-table-scroll td { padding: 10px 9px; }
+}
+
+/* Stage 5: explicit human findings and a saved review activity log. */
+.dashboard .detail-modal .ppe-human-review {
+  margin: 22px 0 18px;
+  padding: 20px;
+  border: 1px solid #dce7ef;
+  border-radius: 12px;
+  background: #fff;
+}
+.detail-modal .ppe-human-review-heading,
+.detail-modal .ppe-review-history-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.detail-modal .ppe-human-review-heading { margin-bottom: 19px; }
+.detail-modal .ppe-human-review-heading h3,
+.detail-modal .ppe-review-history-heading h3 { margin: 0 0 5px; font-size: 17px; }
+.detail-modal .ppe-human-review-heading p { margin: 0; color: #647e92; font-size: 12px; line-height: 1.5; }
+.detail-modal .ppe-human-finding {
+  display: inline-flex;
+  padding: 7px 10px;
+  border-radius: 24px;
+  background: #e9eff4;
+  color: #4d697d;
+  font-size: 11px;
+  font-weight: 800;
+}
+.detail-modal .ppe-human-finding.confirmed { background: #ffe9e6; color: #aa4339; }
+.detail-modal .ppe-human-finding.false_alert { background: #e4f6e9; color: #187047; }
+.detail-modal .ppe-human-finding.inconclusive { background: #fff1d9; color: #8c611e; }
+.detail-modal .ppe-review-form fieldset { min-width: 0; margin: 0; padding: 0; border: none; }
+.detail-modal .ppe-review-form fieldset:disabled { opacity: .65; }
+.detail-modal .ppe-review-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; }
+.detail-modal .ppe-review-form label,
+.detail-modal .ppe-review-close-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  font-weight: 750;
+  color: #345b75;
+}
+.detail-modal .ppe-review-form label > span,
+.detail-modal .ppe-review-close-actions label > span { font-size: 12px; }
+.detail-modal .ppe-review-form input,
+.detail-modal .ppe-review-form select,
+.detail-modal .ppe-review-form textarea,
+.detail-modal .ppe-review-close-actions input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cadbe7;
+  border-radius: 8px;
+  background: #fff;
+  color: #234257;
+  padding: 11px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.detail-modal .ppe-review-form textarea { resize: vertical; min-height: 86px; }
+.detail-modal .ppe-review-form small { color: #6e899c; font-weight: 400; line-height: 1.6; }
+.detail-modal .ppe-review-form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.detail-modal .ppe-review-form-actions button { font-size: 12px; }
+.detail-modal .ppe-review-decision-note { margin: 17px 0; padding: 12px 14px; background: #eef6fd; border: 1px solid #d1e4f2; color: #416b89; border-radius: 9px; font-size: 12px; line-height: 1.65; }
+.detail-modal .ppe-review-close-actions { margin: 15px 0 0; padding-bottom: 15px; border-bottom: 1px solid #e3ebf1; }
+.detail-modal .ppe-review-help { margin: 12px 0; padding: 12px 14px; background: #f5f8fb; border-radius: 8px; color: #647f92; font-size: 12px; line-height: 1.6; }
+.detail-modal .ppe-review-error,
+.detail-modal .ppe-review-feedback { margin: 12px 0; padding: 12px 14px; border: 1px solid #fac5c0; border-radius: 9px; background: #fff1ef; color: #a53a33; font-size: 12px; line-height: 1.6; }
+.detail-modal .ppe-review-feedback { border-color: #b9dfc5; background: #ecf9ef; color: #1a7546; }
+.detail-modal .ppe-review-history { margin-top: 23px; padding-top: 18px; border-top: 1px solid #e3ebf1; }
+.detail-modal .ppe-review-history-heading { margin-bottom: 15px; }
+.detail-modal .ppe-review-history-heading span { font-size: 11px; font-weight: 750; color: #7490a4; }
+.detail-modal .ppe-review-history ol { margin: 0; padding: 0 0 0 17px; display: grid; gap: 14px; }
+.detail-modal .ppe-review-history li { padding: 2px 0 7px 8px; font-size: 12px; border-left: 3px solid #66b98f; list-style: none; overflow-wrap: anywhere; }
+.detail-modal .ppe-review-history li strong { display: block; margin-bottom: 4px; color: #29495f; font-size: 13px; }
+.detail-modal .ppe-review-history li small { color: #718a9b; display: block; margin-bottom: 5px; }
+.detail-modal .ppe-review-history li p { margin: 4px 0 6px; color: #44647e; white-space: pre-wrap; line-height: 1.6; }
+
+.dashboard.dark-theme .detail-modal .ppe-human-review { background: #14243a; border-color: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-human-review-heading p,
+.dashboard.dark-theme .detail-modal .ppe-review-form small { color: #b3c8da; }
+.dashboard.dark-theme .detail-modal .ppe-review-form label,
+.dashboard.dark-theme .detail-modal .ppe-review-close-actions label { color: #d9e7f3; }
+.dashboard.dark-theme .detail-modal .ppe-review-form input,
+.dashboard.dark-theme .detail-modal .ppe-review-form select,
+.dashboard.dark-theme .detail-modal .ppe-review-form textarea,
+.dashboard.dark-theme .detail-modal .ppe-review-close-actions input { background: #1d3450; color: #edf5fc; border-color: #46617f; }
+.dashboard.dark-theme .detail-modal .ppe-human-finding.pending { color: #c5d5e2; background: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-human-finding.confirmed { color: #ffccc3; background: #522b2a; }
+.dashboard.dark-theme .detail-modal .ppe-human-finding.false_alert { color: #b7f5cb; background: #215039; }
+.dashboard.dark-theme .detail-modal .ppe-human-finding.inconclusive { color: #ffdea1; background: #533e1c; }
+.dashboard.dark-theme .detail-modal .ppe-review-decision-note { color: #bedaf0; background: #1d3e58; border-color: #35607f; }
+.dashboard.dark-theme .detail-modal .ppe-review-close-actions,
+.dashboard.dark-theme .detail-modal .ppe-review-history { border-color: #36516e; }
+.dashboard.dark-theme .detail-modal .ppe-review-help { background: #1c3450; color: #bdcfde; }
+.dashboard.dark-theme .detail-modal .ppe-review-error { color: #ffc2bb; background: #4b2828; border-color: #99534a; }
+.dashboard.dark-theme .detail-modal .ppe-review-feedback { color: #b7efcc; background: #1f4534; border-color: #417556; }
+.dashboard.dark-theme .detail-modal .ppe-review-history li strong { color: #f1f7fa; }
+.dashboard.dark-theme .detail-modal .ppe-review-history li small { color: #b2c4d4; }
+.dashboard.dark-theme .detail-modal .ppe-review-history li p { color: #cad9e5; }
+
+@media (max-width: 650px) {
+  .dashboard .detail-modal .ppe-human-review { padding: 14px; }
+  .detail-modal .ppe-review-form-grid { grid-template-columns: 1fr; gap: 0; }
+}
+
+/* ===== Hybrid command centre: operational overview + monitoring insights ===== */
+.ppe-app-shell .dashboard {
+  max-width: 1580px;
+  padding: 30px clamp(20px, 3vw, 45px) 38px;
+}
+
+.ppe-app-shell .dashboard .topbar { margin-bottom: 25px; }
+.ppe-app-shell .dashboard .topbar h1 { font-size: clamp(27px, 3vw, 34px); }
+.ppe-app-shell .dashboard .topbar .eyebrow { color: #4b8675; letter-spacing: 1.3px; }
+
+.ppe-sidebar {
+  flex-basis: 242px;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 14px 19px;
+  background: #fff;
+}
+.ppe-sidebar-brand { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.ppe-sidebar-brand > span:last-child { display: grid; gap: 3px; }
+.ppe-sidebar-brand strong { font-size: 15px; color: #133d35; line-height: 1.15; }
+.ppe-sidebar-brand small { color: #779189; font-size: 11px; font-weight: 500; }
+.ppe-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: #fff;
+  background: linear-gradient(135deg, #1cad78, #11694f);
+  border-radius: 12px;
+  font-size: 20px;
+  box-shadow: 0 4px 14px #12896428;
+}
+.ppe-sidebar .ppe-nav-caption {
+  margin: 12px 12px 7px;
+  color: #98a8ae;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+}
+.ppe-sidebar .ppe-nav-item { padding: 11px 12px; min-height: 43px; }
+.ppe-sidebar .ppe-nav-item.ppe-nav-active {
+  background: #e9f8f0;
+  color: #08764e;
+  box-shadow: inset 3px 0 #159b6a;
+}
+.ppe-nav-label { display: inline-flex; gap: 12px; align-items: center; font-size: 12px; font-weight: 650; }
+.ppe-nav-glyph { width: 18px; color: #829e97; font-size: 17px; text-align: center; line-height: 1; }
+.ppe-nav-active .ppe-nav-glyph { color: #149467; }
+.ppe-sidebar .ppe-nav-item small { padding: 2px 7px; background: #f1f5f4; border-radius: 99px; }
+.ppe-sidebar-foot { margin-top: auto; padding: 18px 12px 0; border-top: 1px solid #e8eeea; }
+.ppe-prototype-indicator { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 750; color: #40745e; }
+.ppe-prototype-indicator i, .ppe-hero-kicker i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #32c68a; }
+.ppe-sidebar-foot p { margin: 9px 0 0; color: #879c97; line-height: 1.6; font-size: 11px; }
+
+.ppe-command-hero {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  justify-content: space-between;
+  gap: 28px;
+  align-items: center;
+  padding: clamp(25px, 3vw, 38px);
+  margin-bottom: 24px;
+  background: radial-gradient(circle at 88% 9%, #2b947a 0, transparent 34%), linear-gradient(115deg, #123f3c, #155c4e 62%, #107455);
+  border: 1px solid #175e4f;
+  border-radius: 19px;
+  box-shadow: 0 15px 32px #0d5b4b20;
+  color: #fff;
+}
+.ppe-command-hero::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  top: -93px;
+  right: 115px;
+  width: 350px;
+  height: 350px;
+  border: 1px solid #ffffff24;
+  border-radius: 50%;
+  box-shadow: 0 0 0 54px #ffffff08, 0 0 0 110px #ffffff06;
+}
+.ppe-hero-content, .ppe-hero-actions { position: relative; z-index: 1; }
+.ppe-hero-content { min-width: 0; max-width: 700px; }
+.ppe-hero-kicker { display: inline-flex; align-items: center; gap: 9px; font-size: 10px; font-weight: 800; letter-spacing: 1.65px; color: #a1ebcd; }
+.ppe-command-hero h2 { color: #fff; margin: 12px 0 9px; font-size: clamp(24px, 2.8vw, 35px); letter-spacing: -.85px; line-height: 1.18; }
+.ppe-command-hero p { margin: 0; max-width: 530px; color: #d1f0e5; font-size: 13px; line-height: 1.65; }
+.ppe-hero-context { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 22px; }
+.ppe-hero-context span { border: 1px solid #ffffff38; padding: 6px 10px; border-radius: 99px; color: #e3fff2; font-size: 11px; background: #ffffff0f; }
+.ppe-hero-actions { display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto; min-width: 185px; }
+.ppe-command-hero .ppe-hero-primary, .ppe-command-hero .ppe-hero-secondary { padding: 12px 16px; border-radius: 10px; font-size: 12px; text-align: center; }
+.ppe-command-hero .ppe-hero-primary { background: #e9fff1; color: #125f48; border: 1px solid #e9fff1; }
+.ppe-command-hero .ppe-hero-primary:hover { background: #fff; color: #10573c; border-color: #fff; }
+.ppe-command-hero .ppe-hero-secondary { background: #ffffff12; color: #fff; border: 1px solid #ffffff66; }
+.ppe-command-hero .ppe-hero-secondary:hover { background: #ffffff28; border-color: #fff; }
+.ppe-hero-secondary span { margin-left: 6px; }
+
+.ppe-command-metrics { gap: 14px; margin-bottom: 21px; }
+.ppe-command-metrics .ppe-command-metric { padding: 19px 20px 18px; border-radius: 14px; border-color: #e1ece8; box-shadow: 0 5px 17px #173d3310; }
+.ppe-command-metric-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ppe-command-metrics .ppe-command-metric-top p { margin: 0; line-height: 1.35; color: #5f7672; }
+.ppe-command-metric-symbol { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+.tone-green .ppe-command-metric-symbol { background: #e5f8ed; color: #12845a; }
+.tone-red .ppe-command-metric-symbol { background: #fff0eb; color: #c45c4d; }
+.tone-blue .ppe-command-metric-symbol { background: #e9f4ff; color: #3681b7; }
+.tone-violet .ppe-command-metric-symbol { background: #f0ecff; color: #7966bb; }
+.ppe-command-metrics .ppe-command-metric > strong { margin: 6px 0 9px; font-size: clamp(27px, 2.7vw, 36px); }
+.ppe-command-metrics .ppe-command-metric .metric-note { line-height: 1.5; min-height: 30px; }
+
+.ppe-command-upper-grid { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); gap: 20px; align-items: stretch; }
+.ppe-command-lower-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr); gap: 20px; align-items: stretch; }
+.ppe-command-upper-grid .panel, .ppe-command-lower-grid .panel { min-width: 0; margin-bottom: 20px; border-color: #e1eae8; border-radius: 15px; box-shadow: 0 5px 18px #173d3310; }
+.ppe-command-upper-grid .panel { min-height: 340px; }
+.ppe-command-lower-grid .panel { min-height: 280px; }
+.ppe-command-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.ppe-section-kicker { display: block; margin-bottom: 7px; color: #649781; font-size: 10px; font-weight: 850; letter-spacing: 1.2px; }
+.ppe-command-panel-heading h2 { margin: 0; font-size: clamp(17px, 1.6vw, 20px); letter-spacing: -.35px; }
+.ppe-command-panel-heading + .muted { margin: 10px 0 0; }
+.ppe-command-period { font-size: 11px; font-weight: 700; border-radius: 8px; padding: 7px 10px; background: #f0f6f4; color: #4b7869; white-space: nowrap; }
+.ppe-command-chart { height: 222px; margin: 18px 0 4px; }
+.ppe-command-empty-chart { display: grid; place-items: center; min-height: 203px; padding: 24px; margin-top: 14px; color: #8aa19a; text-align: center; border-radius: 11px; background: repeating-linear-gradient(135deg, #f6faf8, #f6faf8 8px, #f0f6f3 8px, #f0f6f3 16px); font-size: 12px; }
+.ppe-command-panel-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; border-top: 1px solid #edf1ef; margin-top: 8px; padding-top: 13px; color: #8a9b96; font-size: 11px; }
+.ppe-text-link, .ppe-text-link:hover { border: 0; background: transparent; color: #0d845b; padding: 4px 0; border-radius: 0; font-weight: 800; font-size: 12px; }
+.ppe-text-link:hover { color: #096443; text-decoration: underline; }
+
+.ppe-attention-count { display: grid; place-items: center; min-width: 31px; height: 31px; padding: 0 6px; border-radius: 10px; font-size: 13px; font-weight: 850; color: #b35849; background: #ffefea; }
+.ppe-attention-breakdown { display: grid; gap: 8px; margin-top: 18px; }
+.ppe-attention-breakdown button { display: flex; text-align: left; align-items: center; gap: 11px; width: 100%; border: 1px solid #e8eeeb; background: #fbfdfc; border-radius: 11px; padding: 12px; color: #2d4540; }
+.ppe-attention-breakdown button:hover { background: #f0f9f4; border-color: #c7e2d3; }
+.ppe-attention-breakdown button > span:nth-child(2) { display: grid; flex: 1; gap: 4px; min-width: 0; }
+.ppe-attention-breakdown button > span:nth-child(2) strong { font-size: 12px; }
+.ppe-attention-breakdown button > span:nth-child(2) small { color: #82968e; font-size: 11px; font-weight: 450; }
+.ppe-attention-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px; font-weight: 850; font-size: 16px; }
+.ppe-attention-icon.critical { background: #fff0ec; color: #c96653; }
+.ppe-attention-icon.review { background: #eef2ff; color: #6f77bf; }
+.ppe-attention-icon.open { background: #fff4df; color: #ad7738; }
+.ppe-attention-breakdown .ppe-attention-value { font-size: 19px; color: #1d4538; }
+.ppe-attention-disclaimer { margin: 17px 0 0; color: #7b9189; font-size: 11px; line-height: 1.6; }
+
+.ppe-command-incident-list { display: grid; gap: 0; margin-top: 12px; }
+.ppe-command-incident { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; border-radius: 0; border: 0; border-bottom: 1px solid #edf2ef; background: transparent; color: #2f4541; padding: 14px 0; }
+.ppe-command-incident:last-child { border-bottom: 0; }
+.ppe-command-incident:hover { background: #f4faf6; border-color: #edf2ef; padding-left: 8px; padding-right: 8px; border-radius: 8px; }
+.ppe-command-severity-marker { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; background: #e7af57; }
+.ppe-command-severity-marker.high { background: #e26e5c; }
+.ppe-command-severity-marker.low { background: #64a9c6; }
+.ppe-command-incident-main { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.ppe-command-incident-main strong { display: block; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.ppe-command-incident-main small { color: #82968d; font-size: 11px; font-weight: 500; line-height: 1.35; }
+.ppe-command-incident-end { display: inline-flex; gap: 11px; align-items: center; flex: 0 0 auto; color: #91a69b; font-size: 20px; }
+.ppe-command-incident-end .status { font-size: 10px; }
+.ppe-command-incident-empty { text-align: center; padding: 44px 15px; color: #879c93; font-size: 12px; line-height: 1.7; }
+
+.ppe-command-signal-list { display: grid; gap: 14px; margin: 22px 0 12px; }
+.ppe-command-signal { display: grid; gap: 8px; width: 100%; padding: 4px 0; text-align: left; background: transparent; border: 0; color: #405850; }
+.ppe-command-signal:hover { background: transparent; border: 0; color: #0b875c; }
+.ppe-command-signal-label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+.ppe-command-signal-label strong { font-size: 13px; color: #173e31; }
+.ppe-command-signal-track { display: block; height: 8px; border-radius: 99px; overflow: hidden; background: #edf2ef; }
+.ppe-command-signal-track > span { display: block; height: 100%; border-radius: inherit; background: #f2a45a; transition: width .3s ease; }
+.ppe-command-signal-track > span.vest { background: #469d8c; }
+.ppe-command-signal-track > span.boots { background: #6697c0; }
+.ppe-command-signal-track > span.unclear { background: #aa95cc; }
+.ppe-command-signals-note { margin: 18px 0 0; padding-top: 13px; border-top: 1px solid #edf2ef; font-size: 11px; line-height: 1.65; color: #82978c; }
+.ppe-command-method-note { display: flex; align-items: flex-start; gap: 11px; border: 1px solid #dfeee6; border-radius: 11px; background: #f2faf5; padding: 13px 17px; color: #57776b; }
+.ppe-command-method-note > span { margin-top: 1px; font-size: 17px; color: #268962; }
+.ppe-command-method-note p { margin: 0; font-size: 11px; line-height: 1.7; }
+
+/* Dark mode deliberately covers all new surfaces without changing report modals. */
+.ppe-app-shell.dark-theme .ppe-sidebar-brand strong { color: #e0f7e8; }
+.ppe-app-shell.dark-theme .ppe-sidebar-brand small, .ppe-app-shell.dark-theme .ppe-sidebar-foot p { color: #9eb8b3; }
+.ppe-app-shell.dark-theme .ppe-sidebar-foot { border-color: #345267; }
+.ppe-app-shell.dark-theme .ppe-nav-caption { color: #7896a5; }
+.ppe-app-shell.dark-theme .ppe-nav-glyph { color: #9ab4b0; }
+.ppe-app-shell.dark-theme .ppe-sidebar .ppe-nav-item small { background: #26435a; }
+.ppe-app-shell.dark-theme .ppe-command-metric { border-color: #304d59; }
+.ppe-app-shell.dark-theme .ppe-command-metric-top p { color: #a8c3bd; }
+.ppe-app-shell.dark-theme .ppe-command-upper-grid .panel, .ppe-app-shell.dark-theme .ppe-command-lower-grid .panel { border-color: #304c61; }
+.ppe-app-shell.dark-theme .ppe-section-kicker { color: #84d6ad; }
+.ppe-app-shell.dark-theme .ppe-command-period { background: #264558; color: #b5d8d0; }
+.ppe-app-shell.dark-theme .ppe-command-panel-foot, .ppe-app-shell.dark-theme .ppe-command-signals-note { border-color: #345267; color: #a2bab4; }
+.ppe-app-shell.dark-theme .ppe-command-empty-chart { color: #a8c2b7; background: #1d3849; }
+.ppe-app-shell.dark-theme .ppe-text-link { color: #8de6b6; }
+.ppe-app-shell.dark-theme .ppe-attention-breakdown button { background: #1d3548; border-color: #36556a; color: #e0f0e8; }
+.ppe-app-shell.dark-theme .ppe-attention-breakdown button:hover { background: #244a54; }
+.ppe-app-shell.dark-theme .ppe-attention-breakdown button small, .ppe-app-shell.dark-theme .ppe-attention-disclaimer { color: #a8c0bb; }
+.ppe-app-shell.dark-theme .ppe-attention-breakdown .ppe-attention-value { color: #e4faf0; }
+.ppe-app-shell.dark-theme .ppe-command-incident { color: #e0f0e8; border-color: #345267; }
+.ppe-app-shell.dark-theme .ppe-command-incident:hover { background: #1f3e50; }
+.ppe-app-shell.dark-theme .ppe-command-incident-main small, .ppe-app-shell.dark-theme .ppe-command-incident-empty { color: #a2bab4; }
+.ppe-app-shell.dark-theme .ppe-command-signal { color: #b7d1c9; }
+.ppe-app-shell.dark-theme .ppe-command-signal-label strong { color: #ecfff2; }
+.ppe-app-shell.dark-theme .ppe-command-signal-track { background: #345267; }
+.ppe-app-shell.dark-theme .ppe-command-method-note { border-color: #386650; background: #183b34; color: #b5d5c5; }
+
+@media (max-width: 1240px) {
+  .ppe-sidebar { flex-basis: 208px; }
+  .ppe-command-upper-grid, .ppe-command-lower-grid { grid-template-columns: minmax(0, 1.3fr) minmax(270px, 1fr); gap: 15px; }
+  .ppe-command-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 1030px) {
+  .ppe-command-upper-grid, .ppe-command-lower-grid { grid-template-columns: 1fr; }
+  .ppe-command-upper-grid .panel, .ppe-command-lower-grid .panel { min-height: 0; }
+  .ppe-command-hero { align-items: flex-start; }
+  .ppe-hero-actions { min-width: 164px; }
+}
+@media (max-width: 760px) {
+  .ppe-sidebar { width: min(275px, 85vw); flex-basis: auto; }
+  .ppe-app-shell .dashboard { padding: 23px 17px 32px; }
+  .ppe-command-hero { flex-direction: column; gap: 22px; }
+  .ppe-hero-actions { flex-direction: row; width: 100%; flex-wrap: wrap; }
+  .ppe-hero-actions button { flex: 1 1 155px; }
+}
+@media (max-width: 520px) {
+  .ppe-command-metrics { grid-template-columns: 1fr; }
+  .ppe-command-hero { padding: 23px 19px; }
+  .ppe-command-hero h2 { font-size: 25px; }
+  .ppe-command-panel-heading { align-items: flex-start; }
+  .ppe-command-upper-grid .panel, .ppe-command-lower-grid .panel { padding: 19px; }
+  .ppe-command-incident-end { flex-direction: column-reverse; gap: 3px; align-self: center; }
+  .ppe-command-incident-end .status { padding: 5px 6px; }
+  .ppe-command-method-note { padding: 12px; }
 }
